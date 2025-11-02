@@ -1,10 +1,12 @@
+
 """Visualizza una sfera di micro puntini che reagisce a una traccia audio.
 
 Questo script usa PyQtGraph (con backend OpenGL) per ottenere un'animazione
 molto reattiva rispetto alla versione basata su Matplotlib. I puntini sono
 proiettati sulla superficie di una sfera e la loro distanza dal centro è
-modulata in base allo spettro calcolato su blocchi di una traccia audio
-selezionata dall'utente.
+modulata in base allo spettro calcolato su blocchi di una traccia audio.
+La sorgente audio può provenire da un file o da un'altra parte del programma
+tramite un oggetto che implementa il protocollo ``AudioSource``.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from typing import Protocol
 
 from numpy.random import default_rng
 
@@ -57,36 +60,98 @@ class AudioConfig:
     loop_track: bool = True
 
 
-class AudioAnalyzer:
-    """Legge blocchi di una traccia audio e ne calcola lo spettro di ampiezza."""
+class AudioSource(Protocol):
+    """Interfaccia minima per fornire blocchi audio all'analizzatore."""
 
-    def __init__(self, config: AudioConfig | None = None) -> None:
-        self.config = config or AudioConfig()
-        if not self.config.track_path:
-            raise SystemExit(
-                "Devi specificare il percorso della traccia audio da analizzare."
-            )
+    samplerate: float
 
+    def reset(self) -> None:
+        """Riporta la sorgente all'inizio del flusso audio."""
+
+    def read(self, blocksize: int) -> np.ndarray:
+        """Restituisce un array 1D di campioni (può essere vuoto a EOF)."""
+
+    def close(self) -> None:
+        """Rilascia le risorse associate alla sorgente."""
+
+
+class SoundFileSource:
+    """Legge blocchi da un file su disco usando soundfile."""
+
+    def __init__(self, path: str) -> None:
+        self._path = path
         try:
-            self._file = sf.SoundFile(self.config.track_path)
+            self._file = sf.SoundFile(path)
         except FileNotFoundError as exc:
-            raise SystemExit(
-                f"File audio non trovato: {self.config.track_path}"
-            ) from exc
+            raise SystemExit(f"File audio non trovato: {path}") from exc
         except sf.SoundFileError as exc:
             raise SystemExit(
                 "Impossibile aprire il file audio specificato."
                 " Assicurati che il formato sia supportato."
             ) from exc
 
-        self._samplerate = float(self._file.samplerate)
+        self.samplerate = float(self._file.samplerate)
+
+    def _ensure_open(self) -> None:
+        if self._file.closed:
+            self._file = sf.SoundFile(self._path)
+            self.samplerate = float(self._file.samplerate)
+
+    def reset(self) -> None:
+        self._ensure_open()
+        self._file.seek(0)
+
+    def read(self, blocksize: int) -> np.ndarray:
+        self._ensure_open()
+        frames = self._file.read(blocksize, dtype="float32", always_2d=True)
+        if frames.size == 0:
+            return np.empty(0, dtype=float)
+        return frames.mean(axis=1)
+
+    def close(self) -> None:
+        if not self._file.closed:
+            self._file.close()
+
+
+class AudioAnalyzer:
+    """Elabora blocchi audio da una sorgente esterna e ne calcola lo spettro."""
+
+    def __init__(
+        self,
+        config: AudioConfig | None = None,
+        source: AudioSource | None = None,
+    ) -> None:
+        self.config = config or AudioConfig()
+        self._source: AudioSource | None = None
+        self._samplerate = 44_100.0
         self._latest_spectrum = np.zeros(self.config.blocksize // 2 + 1, dtype=float)
         self._latest_level = 0.0
+        self.attach_source(source)
         self._lock = threading.Lock()
         self._window = np.hanning(self.config.blocksize)
 
         self._running = False
         self._thread: threading.Thread | None = None
+
+    def attach_source(self, source: AudioSource | None) -> None:
+        """Permette di fornire o sostituire dinamicamente la sorgente audio."""
+
+        if source is None:
+            if self.config.track_path:
+                source = SoundFileSource(self.config.track_path)
+            else:
+                self._source = None
+                self._latest_spectrum.fill(0.0)
+                self._latest_level = 0.0
+                return
+
+        if self._running:
+            raise RuntimeError("Impossibile cambiare sorgente mentre l'analisi è in corso.")
+
+        self._source = source
+        self._samplerate = float(source.samplerate)
+        self._latest_spectrum = np.zeros(self.config.blocksize // 2 + 1, dtype=float)
+        self._latest_level = 0.0
 
     def _process_block(self, audio: np.ndarray) -> None:
         if not audio.size:
@@ -118,24 +183,23 @@ class AudioAnalyzer:
             )
 
     def _worker(self) -> None:  # pragma: no cover - eseguito su thread separato
-        self._file.seek(0)
+        assert self._source is not None
+
+        self._source.reset()
         next_tick = time.perf_counter()
 
         while self._running:
-            frames = self._file.read(
-                self.config.blocksize, dtype="float32", always_2d=True
-            )
+            audio = self._source.read(self.config.blocksize)
 
-            if frames.size == 0:
+            if audio.size == 0:
                 if self.config.loop_track:
-                    self._file.seek(0)
+                    self._source.reset()
                     continue
                 with self._lock:
                     self._latest_spectrum.fill(0.0)
                     self._latest_level = 0.0
                 break
 
-            audio = frames.mean(axis=1)
             self._process_block(audio)
 
             next_tick += len(audio) / self._samplerate
@@ -148,6 +212,12 @@ class AudioAnalyzer:
     def start(self) -> None:
         if self._running:
             return
+
+        if self._source is None:
+            raise SystemExit(
+                "Nessuna sorgente audio fornita all'AudioAnalyzer."
+                " Usa attach_source() oppure specifica track_path."
+            )
 
         self._running = True
         self._thread = threading.Thread(target=self._worker, daemon=True)
@@ -162,8 +232,8 @@ class AudioAnalyzer:
             if self._thread and self._thread.is_alive():
                 self._thread.join(timeout=0.5)
 
-        if not self._file.closed:
-            self._file.close()
+        if self._source is not None:
+            self._source.close()
 
     def spectrum_for_points(self, n_points: int) -> np.ndarray:
         """Restituisce lo spettro ridimensionato al numero di punti richiesto."""
@@ -393,11 +463,11 @@ def main(argv: list[str] | None = None) -> None:
 
     config = AudioConfig(
         blocksize=args.blocksize,
-        track_path=args.audio_path,
         loop_track=not args.no_loop,
     )
 
-    analyzer = AudioAnalyzer(config)
+    source = SoundFileSource(args.audio_path)
+    analyzer = AudioAnalyzer(config, source=source)
     analyzer.start()
 
     app = QtWidgets.QApplication([sys.argv[0]])
@@ -418,3 +488,4 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
