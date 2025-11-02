@@ -20,11 +20,13 @@ class TextToSpeechResponder:
     responses: Mapping[str, str] = field(default_factory=dict)
     default_response: str = "Mi spiace, non ho ancora imparato come rispondere a questa richiesta."
     output_dir: Path = field(default_factory=lambda: Path("tts_output"))
+    _normalized: Dict[str, str] = field(init=False, repr=False, default_factory=dict)
+
 
     def __post_init__(self) -> None:
         self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._normalized: Dict[str, str] = {self._normalize(key): value for key, value in self.responses.items()}
+        self._normalized = {self._normalize(key): value for key, value in self.responses.items()}
 
     # ------------------------------------------------------------------
     def _normalize(self, text: str) -> str:

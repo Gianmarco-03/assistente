@@ -73,13 +73,16 @@ class SphereVisualizer(QtWidgets.QWidget):
         self.n_points = self.style.n_points
         self.base_radius = self.style.base_radius
         self.horizontal_strength = self.style.horizontal_strength
-        self.rotation_speed = np.deg2rad(self.style.rotation_speed_deg)
+        self.rotation_speed = 0.5
         self.rotation_angle = 0.0
+        self.rotation_axis = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+
 
         self.base_points = fibonacci_sphere(self.n_points, self.base_radius)
         self.normals = self.base_points / np.linalg.norm(
             self.base_points, axis=1, keepdims=True
         )
+        self.reactive = False
         self.profile_samples = 256
         self.colatitude_norm = np.arccos(self.normals[:, 1]) / np.pi
 
@@ -123,8 +126,34 @@ class SphereVisualizer(QtWidgets.QWidget):
         self.timer.timeout.connect(self.update_points)
         self.timer.start(16)
 
+
+    def _rotation_matrix(self, axis, angle_degrees):
+        """Crea una matrice di rotazione 3D intorno all'asse dato (x,y,z)."""
+        import numpy as np
+        angle = np.radians(angle_degrees)
+        x, y, z = axis
+        c, s = np.cos(angle), np.sin(angle)
+        return np.array([
+            [c + (1 - c) * x * x,     (1 - c) * x * y - s * z, (1 - c) * x * z + s * y],
+            [(1 - c) * y * x + s * z, c + (1 - c) * y * y,     (1 - c) * y * z - s * x],
+            [(1 - c) * z * x - s * y, (1 - c) * z * y + s * x, c + (1 - c) * z * z]
+        ], dtype=np.float32)
+
     # ------------------------------------------------------------------
     def update_points(self) -> None:
+        # 1) ruota SEMPRE
+        self.rotation_angle = (self.rotation_angle + self.rotation_speed) % 360.0
+        rotation_matrix = self._rotation_matrix(self.rotation_axis, self.rotation_angle)
+
+        # 2) se non deve reagire all'audio, ruota solo la forma base
+        if not self.reactive:
+            rotated_points = self.base_points @ rotation_matrix.T
+            rotated_cloud = self.cloud_base @ rotation_matrix.T
+            self.scatter.setData(pos=rotated_points)
+            self.cloud.setData(pos=rotated_cloud)
+            return
+
+        # 3) altrimenti: usa l'audio come prima
         response_profile = self.analyzer.spectrum_for_points(self.profile_samples)
         phi_axis = np.linspace(0.0, 1.0, self.profile_samples)
         radial_profile = np.interp(self.colatitude_norm, phi_axis, response_profile)
@@ -139,6 +168,7 @@ class SphereVisualizer(QtWidgets.QWidget):
 
         half = self.profile_samples // 2
         phi_half_axis = np.linspace(0.0, 1.0, half)
+
         profile_x = np.interp(
             self.colatitude_norm,
             phi_half_axis,
@@ -157,15 +187,10 @@ class SphereVisualizer(QtWidgets.QWidget):
         new_positions[:, 0] += self.horizontal_strength * profile_x
         new_positions[:, 2] += self.horizontal_strength * profile_z
 
-        self.rotation_angle = (self.rotation_angle + self.rotation_speed) % (2 * np.pi)
-        cos_a = np.cos(self.rotation_angle)
-        sin_a = np.sin(self.rotation_angle)
-        rotation_matrix = np.array(
-            [[cos_a, 0.0, sin_a], [0.0, 1.0, 0.0], [-sin_a, 0.0, cos_a]]
-        )
-
+        # applica la rotazione calcolata all'inizio
         rotated_points = new_positions @ rotation_matrix.T
 
+        # anche la cloud segue l'audio
         cloud_profile = np.interp(
             self.cloud_colatitude,
             phi_axis,
@@ -199,6 +224,17 @@ class SphereVisualizer(QtWidgets.QWidget):
         self.scatter.setData(pos=rotated_points)
         self.cloud.setData(pos=rotated_cloud)
 
+
+    def set_reactive(self, on: bool) -> None:
+        """Accende o spegne l'animazione guidata dall'audio."""
+        self.reactive = on
+        if not on:
+            # svuota i dati dell'audio, così al prossimo frame non si deforma
+            self.analyzer.mute()
+            # rimetti forma/base e alone base
+            self.scatter.setData(pos=self.base_points)
+            self.cloud.setData(pos=self.cloud_base)
+
     # ------------------------------------------------------------------
     @staticmethod
     def _generate_cloud(
@@ -211,12 +247,11 @@ class SphereVisualizer(QtWidgets.QWidget):
         radii = radius + thickness * rng.random(n_points)
         base_positions = directions * radii[:, np.newaxis]
         return directions, radii, base_positions
-
     # ------------------------------------------------------------------
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # pragma: no cover - evento GUI
         self.timer.stop()
         self.analyzer.stop()
         super().closeEvent(event)
-
+    
 
 __all__ = ["SphereVisualizer", "fibonacci_sphere", "SphereStyle", "pg"]

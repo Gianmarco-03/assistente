@@ -15,3 +15,6 @@ class AudioConfig:
     smoothing: float = 0.35
     track_path: str = ""
     loop_track: bool = True
+    use_output_loopback: bool = False
+    loopback_device: str = ""
+

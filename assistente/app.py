@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -46,8 +46,13 @@ def create_qt_application() -> QtWidgets.QApplication:
     pg.setConfigOptions(antialias=True)
     return app
 
-
-def run_visualizer(analyzer: AudioAnalyzer, *, window_title: str = "Sfera Spettro 3D", size: int = 900) -> int:
+def run_visualizer(
+    analyzer: AudioAnalyzer,
+    *,
+    window_title: str = "Sfera Spettro 3D",
+    size: int = 900,
+    on_start: Callable[[], None] | None = None,
+) -> int:
     """Avvia l'interfaccia grafica che visualizza la sfera."""
 
     app = create_qt_application()
@@ -57,6 +62,8 @@ def run_visualizer(analyzer: AudioAnalyzer, *, window_title: str = "Sfera Spettr
     window.show()
 
     analyzer.start()
+    if on_start is not None:
+        on_start()
     try:
         return app.exec_()
     finally:

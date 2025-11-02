@@ -8,10 +8,17 @@ import sys
 from pathlib import Path
 from typing import Dict
 
-from app import create_analyzer_for_file, playback_audio_file, run_visualizer
+import threading
+
+from app import create_analyzer_for_file, create_qt_application, playback_audio_file, run_visualizer
+from audio.analyzer import AudioAnalyzer    
+from audio.analyzer import AudioAnalyzer
 from audio.config import AudioConfig
+from audio.microphone import InteractiveAudioSource, MicrophoneSource
+from audio.recognizer import BackgroundRecognizer, RecognitionConfig
 from tts.pyttsx3_engine import Pyttsx3Engine
 from tts.responder import TextToSpeechResponder
+from visualization.sphere import SphereVisualizer
 
 DEFAULT_RESPONSES: Dict[str, str] = {
     "ciao": "Ciao! Sono qui per aiutarti con la visualizzazione della sfera.",
@@ -76,6 +83,108 @@ def build_parser() -> argparse.ArgumentParser:
     )
     speak_parser.set_defaults(func=run_speak_command)
 
+    listen_parser = subparsers.add_parser(
+        "listen",
+        help="Ascolta dal microfono e risponde con voce sintetica mantenendo la sfera attiva.",
+    )
+    listen_parser.add_argument(
+        "--responses-json",
+        type=Path,
+        help="File JSON con mappature personalizzate 'input' -> 'response'.",
+    )
+    listen_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("tts_output"),
+        help="Cartella dove salvare i file audio generati (default: tts_output).",
+    )
+    listen_parser.add_argument(
+        "--blocksize",
+        type=int,
+        default=1_024,
+        help="Numero di campioni per blocco di analisi (default: 1024).",
+    )
+    listen_parser.add_argument(
+        "--voice",
+        help="ID della voce pyttsx3 da utilizzare (opzionale).",
+    )
+    listen_parser.add_argument(
+        "--rate",
+        type=int,
+        help="Velocità di parlato per pyttsx3 (opzionale).",
+    )
+    listen_parser.add_argument(
+        "--samplerate",
+        type=float,
+        help="Frequenza di campionamento del microfono (default: valore del dispositivo).",
+    )
+    listen_parser.add_argument(
+        "--device",
+        help="Nome o indice del dispositivo microfono da utilizzare (opzionale).",
+    )
+    listen_parser.add_argument(
+        "--language",
+        default="it-IT",
+        help="Codice lingua per il riconoscimento vocale (default: it-IT).",
+    )
+    listen_parser.add_argument(
+        "--start-threshold",
+        type=float,
+        default=0.02,
+        help="Ampiezza media necessaria per iniziare a registrare una frase (default: 0.02).",
+    )
+    listen_parser.add_argument(
+        "--stop-threshold",
+        type=float,
+        default=0.01,
+        help="Ampiezza media sotto cui viene conteggiato il silenzio (default: 0.01).",
+    )
+    listen_parser.add_argument(
+        "--silence-duration",
+        type=float,
+        default=0.6,
+        help="Durata (in secondi) di silenzio necessaria per chiudere una frase (default: 0.6).",
+    )
+    listen_parser.add_argument(
+        "--min-phrase-duration",
+        type=float,
+        default=0.35,
+        help="Durata minima (in secondi) perché una frase venga inviata al riconoscimento (default: 0.35).",
+    )
+    listen_parser.add_argument(
+        "--phrase-time-limit",
+        type=float,
+        default=6.0,
+        help="Durata massima (in secondi) di una frase prima dell'invio forzato (default: 6.0).",
+    )
+    listen_parser.add_argument(
+        "--window-size",
+        type=int,
+        default=900,
+        help="Dimensione della finestra della sfera (default: 900).",
+    )
+    monitor_parser = subparsers.add_parser(
+        "monitor",
+        help="Anima la sfera monitorando l'audio di uscita del sistema in tempo reale.",
+    )
+    monitor_parser.add_argument(
+        "--blocksize",
+        type=int,
+        default=1_024,
+        help="Numero di campioni per blocco di analisi (default: 1024).",
+    )
+    monitor_parser.add_argument(
+        "--device",
+        help=(
+            "Nome o indice del dispositivo di uscita da monitorare (opzionale)."
+            " Usa l'elenco di sounddevice per identificarlo."
+        ),
+    )
+    monitor_parser.set_defaults(func=run_monitor_command)
+
+    listen_parser.set_defaults(func=run_listen_command)
+
+
     return parser
 
 
@@ -117,17 +226,147 @@ def run_speak_command(args: argparse.Namespace) -> int:
     print(f"Risposta generata: {response_text}")
     print(f"File audio creato: {audio_path}")
 
-    if not args.no_playback:
-        playback_audio_file(str(audio_path))
-
     analyzer = create_analyzer_for_file(str(audio_path), config)
+    playback_thread: threading.Thread | None = None
+
+
+    if not args.no_playback:
+        playback_thread = threading.Thread(
+            target=playback_audio_file,
+            args=(str(audio_path),),
+            daemon=True,
+        )
+
+    def launch_playback() -> None:
+        if playback_thread is not None and not playback_thread.is_alive():
+            playback_thread.start()
     try:
-        return run_visualizer(analyzer, window_title="Risposta vocale")
+                    return run_visualizer(
+            analyzer,
+            window_title="Risposta vocale",
+            on_start=launch_playback if playback_thread is not None else None,
+        )
     finally:
+        if playback_thread is not None:
+            playback_thread.join()
+
+
+def run_listen_command(args: argparse.Namespace) -> int:
+    if args.blocksize <= 0:
+        raise SystemExit("Il parametro --blocksize deve essere un intero positivo.")
+
+    responses = DEFAULT_RESPONSES.copy()
+    if args.responses_json:
+        responses.update(load_responses(args.responses_json))
+
+    config = AudioConfig(blocksize=args.blocksize, loop_track=False)
+
+    engine = Pyttsx3Engine(voice=args.voice, rate=args.rate)
+    responder = TextToSpeechResponder(
+        engine=engine,
+        responses=responses,
+        output_dir=args.output_dir,
+    )
+
+    device: int | str | None
+    if args.device is None:
+        device = None
+    else:
+        try:
+            device = int(args.device)
+        except ValueError:
+            device = args.device
+
+    microphone = MicrophoneSource(samplerate=args.samplerate, device=device)
+    interactive_source = InteractiveAudioSource(microphone)
+    analyzer = AudioAnalyzer(config, source=interactive_source)
+
+    app = create_qt_application()
+    window = SphereVisualizer(analyzer)
+    window.resize(args.window_size, args.window_size)
+    window.setWindowTitle("Assistente vocale")
+    window.show()
+
+    listener_queue = microphone.register_listener(maxsize=128)
+    recognition_config = RecognitionConfig(
+        language=args.language,
+        start_threshold=args.start_threshold,
+        stop_threshold=args.stop_threshold,
+        silence_duration=args.silence_duration,
+        min_phrase_duration=args.min_phrase_duration,
+        max_phrase_duration=args.phrase_time_limit,
+    )
+    recognizer = BackgroundRecognizer(listener_queue, microphone.samplerate, config=recognition_config)
+
+    state = {"busy": False}
+
+    def handle_text(text: str) -> None:
+        cleaned = text.strip()
+        if not cleaned:
+            return
+
+        if state["busy"]:
+            print("[assistente] Attendere la conclusione della risposta precedente.")
+            return
+
+        state["busy"] = True
+        recognizer.set_paused(True)
+
+        def worker() -> None:
+            try:
+                print(f"Utente: {cleaned}")
+                response_text, audio_path = responder.respond(cleaned)
+                print(f"Assistente: {response_text}")
+                interactive_source.queue_playback_file(audio_path)
+                window.set_reactive(True)
+                playback_audio_file(str(audio_path))
+            except Exception as exc:  # pragma: no cover - errori di runtime in thread
+                print(f"[errore] Impossibile completare la risposta: {exc}")
+            finally:
+                recognizer.set_paused(False)
+                window.set_reactive(False)
+                state["busy"] = False
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    recognizer.on_text.append(handle_text)
+    recognizer.on_error.append(lambda message: print(f"[riconoscimento] {message}"))
+
+    print("Sfera attiva. Parla per ricevere una risposta.")
+
+    analyzer.start()
+    recognizer.start()
+
+    try:
+        return app.exec_()
+    finally:
+        recognizer.stop()
+        analyzer.stop()
         engine.shutdown()
+
+def run_monitor_command(args: argparse.Namespace) -> int:
+    if args.blocksize <= 0:
+        raise SystemExit("Il parametro --blocksize deve essere un intero positivo.")
+
+    config = AudioConfig(
+        blocksize=args.blocksize,
+        use_output_loopback=True,
+        loopback_device=args.device or "",
+    )
+    analyzer = AudioAnalyzer(config)
+    return run_visualizer(
+        analyzer,
+        window_title="Monitor uscita audio",
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if not argv:
+        argv = ["listen"]
+
     parser = build_parser()
     args = parser.parse_args(argv)
     exit_code = args.func(args)
@@ -135,4 +374,4 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main(sys.argv[1:])
+    main()

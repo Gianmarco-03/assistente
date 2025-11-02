@@ -40,6 +40,12 @@ Generare una risposta vocale a partire da un testo (con animazione e riproduzion
 python -m assistente.main speak "ciao"
 ```
 
+Monitorare l'audio di uscita del sistema (richiede `sounddevice` e un driver compatibile):
+
+```bash
+python -m assistente.main monitor
+```
+
 Sono disponibili opzioni per personalizzare il blocco di analisi, il dizionario di risposte (`--responses-json`),
 la cartella di output e i parametri del motore TTS (`--voice`, `--rate`). Usa `--help` per l'elenco completo.
 

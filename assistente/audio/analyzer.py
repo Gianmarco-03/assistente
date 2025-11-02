@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Optional
-
+from collections import deque
+from typing import Deque, Optional
 import numpy as np
 
 from .config import AudioConfig
-from .sources import AudioSource, SoundFileSource
+from .sources import AudioSource, SoundDeviceLoopbackSource, SoundFileSource
 
 
 class AudioAnalyzer:
@@ -19,15 +19,17 @@ class AudioAnalyzer:
         self.config = config or AudioConfig()
         self._source: AudioSource | None = None
         self._samplerate = 44_100.0
+        self._running = False
+        self._thread: threading.Thread | None = None
         self._latest_spectrum = np.zeros(self.config.blocksize // 2 + 1, dtype=float)
         self._latest_level = 0.0
-        self.attach_source(source)
         self._lock = threading.Lock()
         self._window = np.hanning(self.config.blocksize)
 
         self._running = False
         self._thread: threading.Thread | None = None
 
+        self.attach_source(source)
     # ------------------------------------------------------------------
     # Gestione sorgenti
     def attach_source(self, source: Optional[AudioSource]) -> None:
@@ -36,13 +38,19 @@ class AudioAnalyzer:
         if source is None:
             if self.config.track_path:
                 source = SoundFileSource(self.config.track_path)
+            elif self.config.use_output_loopback:
+                loop_device = self.config.loopback_device or None
+                source = SoundDeviceLoopbackSource(
+                    self.config.blocksize,
+                    device=loop_device,
+                    )
             else:
                 self._source = None
                 self._latest_spectrum.fill(0.0)
                 self._latest_level = 0.0
                 return
 
-        if self._running:
+        if self.is_running:
             raise RuntimeError("Impossibile cambiare sorgente mentre l'analisi è in corso.")
 
         self._source = source
@@ -53,7 +61,7 @@ class AudioAnalyzer:
     def replace_source(self, source: AudioSource) -> None:
         """Sostituisce la sorgente in modo sicuro riavviando l'analisi se necessario."""
 
-        was_running = self._running
+        was_running = self.is_running
         if was_running:
             self.stop()
         self.attach_source(source)
@@ -63,7 +71,7 @@ class AudioAnalyzer:
     # ------------------------------------------------------------------
     # Controllo esecuzione
     def start(self) -> None:
-        if self._running:
+        if self.is_running:
             return
 
         if self._source is None:
@@ -77,7 +85,7 @@ class AudioAnalyzer:
         self._thread.start()
 
     def stop(self) -> None:
-        if self._running:
+        if self.is_running:
             self._running = False
             if self._thread is not None:
                 self._thread.join(timeout=1.0)
@@ -87,6 +95,13 @@ class AudioAnalyzer:
 
         if self._source is not None:
             self._source.close()
+
+    def mute(self) -> None:
+        """Azzera lo spettro e il livello: la sfera non ha più nulla da visualizzare."""
+        with self._lock:
+            self._latest_spectrum.fill(0.0)
+            self._latest_level = 0.0
+
 
     @property
     def is_running(self) -> bool:
@@ -169,6 +184,7 @@ class AudioAnalyzer:
                     self._source.reset()
                     continue
                 with self._lock:
+                    
                     self._latest_spectrum.fill(0.0)
                     self._latest_level = 0.0
                 break

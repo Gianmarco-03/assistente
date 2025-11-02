@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
+from loss_visualizaer import plot_loss_from_list
 
 from pipeline import (
     DEFAULT_CONFIG,
@@ -53,14 +55,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # 1) allenamento
     args = parse_args(argv)
-    pipeline, report = train_model(
+    bundle, report = train_model(
         args.dataset_dir,
         config=args.config,
         train_split=args.train_split,
         eval_split=args.eval_split,
     )
-    model_path = save_model(pipeline, args.output_dir, filename=MODEL_FILENAME)
+     # 2) salva modello
+    output_dir = Path(args.output_dir)
+    model_path = save_model(bundle, output_dir, filename=MODEL_FILENAME)
+
+    # 3)  salva le loss se il classificatore le espone
+    #    (succede se in pipeline.py MLPClassifier(solver="adam", ...))
+    pipeline = bundle['pipeline']
+
+    log_path = output_dir / "training_log.json"
+    losses: list[dict] = []
+
+    clf = pipeline.named_steps.get("classifier", None)
+    if clf is not None and hasattr(clf, "loss_curve_"):
+        losses = [
+            {"epoch": i + 1, "train_loss": loss}
+            for i, loss in enumerate(clf.loss_curve_)
+        ]
+        log_path = output_dir / "training_log.json"
+        with log_path.open("w", encoding="utf-8") as f:
+            json.dump(losses, f, indent=2, ensure_ascii=False)
+        print(f"\n✅ File delle loss salvato in: {log_path}")
+    else:
+        print("\n⚠️ Nessuna loss da salvare (il classifier non espone 'loss_curve_').")
+
+ # 4) Mostra / salva il plot usando la funzione importata
+    if losses:
+        # mostra il grafico e salvalo anche in PNG
+        plot_loss_from_list(
+            losses,
+            output_file=output_dir / "loss_plot.png",
+            show=True,
+        )
+
+    # 5) Report    
     print("Training completato. Report di valutazione:\n")
     print(report)
     print(f"\nModello salvato in: {model_path}")

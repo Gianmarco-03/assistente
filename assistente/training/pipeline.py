@@ -11,6 +11,8 @@ try:  # pragma: no cover - dipendenze opzionali
     from sklearn.model_selection import train_test_split
     from sklearn.pipeline import Pipeline
     from sklearn.svm import LinearSVC
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.preprocessing import LabelEncoder
 except ImportError as exc:  # pragma: no cover
     raise SystemExit(
         "È necessario installare scikit-learn per eseguire il training.\n"
@@ -39,13 +41,23 @@ MODEL_FILENAME = "text_response_model.joblib"
 def build_pipeline() -> Pipeline:
     """Restituisce una pipeline TF-IDF + LinearSVC."""
 
-    return Pipeline(
-        [
-            ("vectorizer", TfidfVectorizer(ngram_range=(1, 2), min_df=1)),
-            ("classifier", LinearSVC()),
-        ]
-    )
-
+    """TF-IDF + MLP (Adam)."""
+    return Pipeline([
+        ("vectorizer", TfidfVectorizer(ngram_range=(1, 2), min_df=1)),
+        ("classifier", MLPClassifier(
+            hidden_layer_sizes=(256, 128),
+            activation="relu",
+            solver="adam",
+            learning_rate_init=5e-4,    # prev: 1e-3
+            batch_size=64,
+            max_iter=60,                # prev: 30
+#            early_stopping=True,        # si ferma da solo [new]
+            n_iter_no_change=5,         #prev: 10
+            validation_fraction=0.2,
+            random_state=42,
+            verbose=True,
+        )),
+    ])
 
 def _load_split(
     dataset_dir: str | Path,
@@ -75,42 +87,53 @@ def train_model(
     config: str = DEFAULT_CONFIG,
     train_split: str = DEFAULT_TRAIN_SPLIT,
     eval_split: str = DEFAULT_EVAL_SPLIT,
-) -> Tuple[Pipeline, str]:
+) -> Tuple[Dict[str, Any], str]:
     """Addestra la pipeline sul dataset e restituisce un report di valutazione."""
 
-    train_data = _load_split(dataset_dir, config=config, split=train_split)
-    if train_data is None:
-        raise ValueError(
-            "Impossibile caricare lo split di training richiesto. "
-            "Verifica che i file JSON del dataset siano presenti."
-        )
+    dataset_dir = Path(dataset_dir)
 
-    train_prompts, train_responses = train_data
-    if len(train_prompts) < 4:  # pragma: no cover - dataset molto piccolo
-        raise ValueError(
-            "Il dataset di training è troppo piccolo per addestrare un modello affidabile."
-        )
+    # 1) --- CARICA TRAIN ---
+    train_samples = load_samples(dataset_dir, config=config, split=train_split)
+    train_texts = [s.prompt for s in train_samples]
+    train_labels = [s.intent for s in train_samples]
 
-    eval_data = _load_split(dataset_dir, config=config, split=eval_split)
-    if eval_data is None:
-        # fallback su suddivisione interna dello split di training
-        train_prompts, test_prompts, train_responses, test_responses = train_test_split(
-            train_prompts,
-            train_responses,
-            test_size=0.25,
-            random_state=42,
-            stratify=train_responses,
-        )
-    else:
-        test_prompts, test_responses = eval_data
+    # 2) --- ENCODER SULLE LABEL ---
+    #    qui trasformiamo "alarm_query" -> 0, "calendar_set" -> 1, ...
+    label_encoder = LabelEncoder()
+    y_train = label_encoder.fit_transform(train_labels)
 
+    # 3) --- COSTRUISCI E ALLENA PIPELINE ---
     pipeline = build_pipeline()
-    pipeline.fit(train_prompts, train_responses)
+    pipeline.fit(train_texts, y_train)
 
-    predicted = pipeline.predict(test_prompts)
-    report = classification_report(test_responses, predicted)
+    # 4) --- CARICA EVAL ---
+    eval_samples = load_samples(dataset_dir, config=config, split=eval_split)
+    eval_texts = [s.prompt for s in eval_samples]
+    eval_labels = [s.intent for s in eval_samples]
 
-    return pipeline, report
+    # le etichette di valutazione le convertiamo con lo stesso encoder
+    y_eval = label_encoder.transform(eval_labels)
+    y_pred_enc = pipeline.predict(eval_texts)
+
+    # 5) --- RICONVERTI LE PREDIZIONI IN TESTO ---
+    y_pred_labels = label_encoder.inverse_transform(y_pred_enc)
+
+    # 6) --- REPORT TESTUALE ---
+    report = classification_report(
+        eval_labels,
+        y_pred_labels,
+        zero_division=0,
+    )
+
+    # 7) --- RESTITUISCI UN "BUNDLE" ---
+    # perché in fase di inference ci serve ANCHE il label encoder
+    bundle: Dict[str, Any] = {
+        "pipeline": pipeline,
+        "label_encoder": label_encoder,
+    }
+
+    return bundle, report
+
 
 
 def save_model(pipeline: Pipeline, output_dir: str | Path, *, filename: str = MODEL_FILENAME) -> Path:
