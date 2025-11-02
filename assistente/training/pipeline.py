@@ -25,7 +25,7 @@ except ImportError as exc:  # pragma: no cover
         "Puoi installarla con: pip install joblib"
     ) from exc
 
-from .dataset import load_samples
+from dataset import load_samples
 
 
 MODEL_FILENAME = "text_response_model.joblib"

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .pipeline import MODEL_FILENAME, save_model, train_model
+from pipeline import MODEL_FILENAME, save_model, train_model
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

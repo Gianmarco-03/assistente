@@ -22,10 +22,10 @@ except ImportError:  # pragma: no cover
 
 from PyQt5 import QtWidgets
 
-from assistente.audio.analyzer import AudioAnalyzer
-from assistente.audio.config import AudioConfig
-from assistente.audio.sources import SoundFileSource
-from assistente.visualization.sphere import SphereVisualizer, pg
+from audio.analyzer import AudioAnalyzer
+from audio.config import AudioConfig
+from audio.sources import SoundFileSource
+from visualization.sphere import SphereVisualizer, pg
 
 
 def create_analyzer_for_file(audio_path: str, config: Optional[AudioConfig] = None) -> AudioAnalyzer:

@@ -24,7 +24,7 @@ except ImportError as exc:  # pragma: no cover
         "Puoi installarla con: pip install pyqtgraph"
     ) from exc
 
-from assistente.audio.analyzer import AudioAnalyzer
+from audio.analyzer import AudioAnalyzer
 
 
 @dataclass(slots=True)

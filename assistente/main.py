@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from typing import Dict
 
-from assistente.app import create_analyzer_for_file, playback_audio_file, run_visualizer
-from assistente.audio.config import AudioConfig
-from assistente.tts.pyttsx3_engine import Pyttsx3Engine
-from assistente.tts.responder import TextToSpeechResponder
+from app import create_analyzer_for_file, playback_audio_file, run_visualizer
+from audio.config import AudioConfig
+from tts.pyttsx3_engine import Pyttsx3Engine
+from tts.responder import TextToSpeechResponder
 
 DEFAULT_RESPONSES: Dict[str, str] = {
     "ciao": "Ciao! Sono qui per aiutarti con la visualizzazione della sfera.",
