@@ -51,24 +51,24 @@ predefinite. Il testo prodotto viene sintetizzato tramite `pyttsx3` e salvato in
 
 ## Training con `zendod_dataset`
 
-La cartella `zendod_dataset/` deve contenere un file `responses.csv` con le colonne `prompt` e `response`. Ogni riga
-rappresenta un esempio di input testuale e la relativa risposta target. Un esempio minimale:
+La cartella `zendod_dataset/` contiene i file JSON lines del dataset ITALIC. Ogni file è nominato come
+`<configurazione>_<split>.json` (ad es. `massive_train.json`) e include gli utterance (`utt`) e l'intent associato
+(`intent`).
 
-```csv
-prompt,response
-ciao,Ciao! Sono la tua assistente virtuale.
-come stai,Sto benissimo, grazie!
-```
+Per avviare l'addestramento e generare un modello `joblib` pronto all'uso, assicurati di aver estratto l'intero dataset e poi
+esegui:
 
-Per avviare l'addestramento e generare un modello `joblib` pronto all'uso:
 
 ```bash
-python -m assistente.training.train
+python -m assistente.training.train --config massive --train-split train --eval-split validation
 ```
 
+Puoi cambiare `--config` per utilizzare una configurazione diversa (es. `hard_noisy` o `hard_speaker`) e modificare gli split
+se vuoi valutare su `test` o creare una suddivisione casuale interna allo split di training (omettendo `--eval-split`).
+
 Il modello verrà salvato nella cartella `models/` (configurabile con `--output-dir`) e l'output del comando mostrerà
-un report di valutazione. Questo modello può essere utilizzato per arricchire le risposte vocali e aggiornare
-le mappature di `TextToSpeechResponder`.
+un report di valutazione basato sullo split scelto. Questo modello può essere utilizzato per arricchire le risposte vocali e
+aggiornare le mappature di `TextToSpeechResponder`.
 
 ## Licenza
 

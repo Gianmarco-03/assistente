@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
@@ -10,14 +10,44 @@ from typing import Iterable, List
 
 @dataclass(slots=True)
 class Sample:
-    """Singolo esempio input/risposta."""
+    """Singolo esempio ``utt``/``intent`` dal dataset ITALIC."""
 
-    prompt: str
-    response: str
+    utterance: str
+    intent: str
+
+    @property
+    def prompt(self) -> str:
+        """Compatibilità con la vecchia interfaccia basata su ``prompt``."""
+
+        return self.utterance
+
+    @property
+    def response(self) -> str:
+        """Compatibilità con la vecchia interfaccia basata su ``response``."""
+
+        return self.intent
 
 
-def load_samples(dataset_dir: str | Path, *, filename: str = "responses.csv") -> List[Sample]:
-    """Carica il dataset atteso in formato CSV."""
+def _resolve_split_file(dataset_dir: Path, config: str, split: str) -> Path:
+    """Restituisce il percorso del file JSON lines per la configurazione richiesta."""
+
+    filename = f"{config}_{split}.json"
+    file_path = dataset_dir / filename
+    if not file_path.exists():
+        raise FileNotFoundError(
+            "Impossibile trovare il file dello split richiesto: "
+            f"{file_path}. Assicurati che il dataset sia stato estratto in 'zendod_dataset/'."
+        )
+    return file_path
+
+
+def load_samples(
+    dataset_dir: str | Path,
+    *,
+    config: str = "massive",
+    split: str = "train",
+) -> List[Sample]:
+    """Carica gli esempi ``utt``/``intent`` da un file JSON lines dello ITALIC dataset."""
 
     path = Path(dataset_dir)
     if not path.exists():
@@ -25,40 +55,46 @@ def load_samples(dataset_dir: str | Path, *, filename: str = "responses.csv") ->
             f"La cartella del dataset non esiste: {path}. Copia i dati in 'zendod_dataset/'."
         )
 
-    csv_path = path / filename
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Impossibile trovare il file {filename} nella cartella {path}."
-            " Il file deve contenere le colonne 'prompt' e 'response'."
-        )
+    json_path = _resolve_split_file(path, config=config, split=split)
 
     samples: List[Sample] = []
-    with csv_path.open("r", encoding="utf8") as handle:
-        reader = csv.DictReader(handle)
-        missing = {"prompt", "response"} - set(reader.fieldnames or [])
-        if missing:
-            raise ValueError(
-                f"Colonne mancanti nel dataset: {', '.join(sorted(missing))}."
-                " Assicurati che il CSV contenga le intestazioni corrette."
-            )
-        for row in reader:
-            prompt = row.get("prompt", "").strip()
-            response = row.get("response", "").strip()
-            if not prompt or not response:
+    with json_path.open("r", encoding="utf8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            raw = line.strip()
+            if not raw:
                 continue
-            samples.append(Sample(prompt=prompt, response=response))
+            try:
+                record = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "Impossibile decodificare la riga "
+                    f"{line_number} di {json_path}: {exc}"
+                ) from exc
+
+            utterance = str(record.get("utt", "")).strip()
+            intent = str(record.get("intent", "")).strip()
+            if not utterance or not intent:
+                # Salta esempi incompleti
+                continue
+            samples.append(Sample(utterance=utterance, intent=intent))
 
     if not samples:
-        raise ValueError("Il dataset è vuoto: aggiungi almeno un esempio valido.")
+        raise ValueError(
+            "Il dataset è vuoto o non contiene esempi validi per lo split richiesto."
+        )
 
     return samples
 
 
-def iter_samples(dataset_dir: str | Path, *, filename: str = "responses.csv") -> Iterable[Sample]:
+def iter_samples(
+    dataset_dir: str | Path,
+    *,
+    config: str = "massive",
+    split: str = "train",
+) -> Iterable[Sample]:
     """Generator lineare sui campioni del dataset."""
 
-    for sample in load_samples(dataset_dir, filename=filename):
-        yield sample
+    yield from load_samples(dataset_dir, config=config, split=split)
 
 
 __all__ = ["Sample", "load_samples", "iter_samples"]
