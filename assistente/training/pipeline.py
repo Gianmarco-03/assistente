@@ -27,7 +27,7 @@ except ImportError as exc:  # pragma: no cover
         "Puoi installarla con: pip install joblib"
     ) from exc
 
-from dataset import load_samples
+from .dataset import load_samples
 
 
 DEFAULT_CONFIG = "massive"
@@ -50,11 +50,11 @@ def build_pipeline() -> Pipeline:
             solver="adam",
             learning_rate_init=5e-4,    # prev: 1e-3
             batch_size=64,
-            max_iter=60,                # prev: 30
+            max_iter=100,                # prev: 60
 #            early_stopping=True,        # si ferma da solo [new]
             n_iter_no_change=5,         #prev: 10
-            validation_fraction=0.2,
-            random_state=42,
+#            validation_fraction=0.1,
+            random_state= 23,
             verbose=True,
         )),
     ])

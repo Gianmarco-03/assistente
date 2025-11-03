@@ -31,6 +31,33 @@ def main():
     print(classification_report(true_labels, pred_labels, zero_division=0))
     plot_loss_from_json(json_path='models/training_log.json')
 
+    print('test yourself!')
+    print("\n🤖 Assistente pronto!")
+    print("Scrivi una frase da riconoscere (digita 'exit' o 'quit' per uscire)\n")
+
+    while True:
+        try:
+            text = input("🎙️  Tu: ").strip()
+            if not text:
+                continue
+            if text.lower() in {"exit", "quit", "esci"}:
+                print("👋 Ciao!")
+                break
+
+            # Predizione
+            y_pred = pipeline.predict([text])[0]
+
+            # Se abbiamo un label encoder, riconvertiamo da numerico a stringa
+            if label_encoder is not None:
+                intent = label_encoder.inverse_transform([y_pred])[0]
+            else:
+                intent = y_pred
+
+            print(f"🤖 Intent riconosciuto: {intent}\n")
+
+        except KeyboardInterrupt:
+            print("\n👋 Interrotto dall’utente.")
+            break
 
 if __name__ == "__main__":
     main()

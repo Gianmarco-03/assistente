@@ -1,2 +1,2 @@
-.joblib
+*.joblib
 /tts_output

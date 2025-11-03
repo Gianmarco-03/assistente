@@ -16,6 +16,7 @@ from audio.analyzer import AudioAnalyzer
 from audio.config import AudioConfig
 from audio.microphone import InteractiveAudioSource, MicrophoneSource
 from audio.recognizer import BackgroundRecognizer, RecognitionConfig
+from intent_router import IntentRouter, IntentRouterError
 from tts.pyttsx3_engine import Pyttsx3Engine
 from tts.responder import TextToSpeechResponder
 from visualization.sphere import SphereVisualizer
@@ -80,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-playback",
         action="store_true",
         help="Non riprodurre il file audio generato (rimane disponibile per la sfera).",
+    )
+    speak_parser.add_argument(
+        "--model-path",
+        type=Path,
+        help="Percorso del modello di classificazione intents (joblib).",
     )
     speak_parser.set_defaults(func=run_speak_command)
 
@@ -163,6 +169,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=900,
         help="Dimensione della finestra della sfera (default: 900).",
     )
+    listen_parser.add_argument(
+        "--model-path",
+        type=Path,
+        help="Percorso del modello di classificazione intents (joblib).",
+    )
     monitor_parser = subparsers.add_parser(
         "monitor",
         help="Anima la sfera monitorando l'audio di uscita del sistema in tempo reale.",
@@ -222,8 +233,18 @@ def run_speak_command(args: argparse.Namespace) -> int:
         output_dir=args.output_dir,
     )
 
-    response_text, audio_path = responder.respond(args.text)
-    print(f"Risposta generata: {response_text}")
+    response_text, matched = responder.find_response(args.text)
+    intent_label: str | None = None
+    if not matched:
+        router = IntentRouter(model_path=args.model_path)
+        try:
+            intent_label, response_text = router.describe(args.text)
+        except IntentRouterError as exc:
+            print(f"[errore] Impossibile analizzare la richiesta: {exc}")
+    audio_path = responder.synthesize(response_text)
+    if intent_label is not None:
+        print(f"Intent rilevato: {intent_label}")
+        print(f"Risposta generata: {response_text}")
     print(f"File audio creato: {audio_path}")
 
     analyzer = create_analyzer_for_file(str(audio_path), config)
@@ -298,7 +319,8 @@ def run_listen_command(args: argparse.Namespace) -> int:
     )
     recognizer = BackgroundRecognizer(listener_queue, microphone.samplerate, config=recognition_config)
 
-    state = {"busy": False}
+    state = {"busy": False, "router_disabled": False}
+    router: IntentRouter | None = None
 
     def handle_text(text: str) -> None:
         cleaned = text.strip()
@@ -313,10 +335,24 @@ def run_listen_command(args: argparse.Namespace) -> int:
         recognizer.set_paused(True)
 
         def worker() -> None:
+            nonlocal router
             try:
                 print(f"Utente: {cleaned}")
-                response_text, audio_path = responder.respond(cleaned)
+                response_text, matched = responder.find_response(cleaned)
+                intent_label: str | None = None
+                if not matched and not state["router_disabled"]:
+                    if router is None:
+                        router = IntentRouter(model_path=args.model_path)
+                    try:
+                        intent_label, response_text = router.describe(cleaned)
+                    except IntentRouterError as exc:
+                        print(f"[errore] Impossibile analizzare la richiesta: {exc}")
+                        router = None
+                        state["router_disabled"] = True
+                audio_path = responder.synthesize(response_text)
                 print(f"Assistente: {response_text}")
+                if intent_label is not None:
+                    print(f"Intent riconosciuto: {intent_label}")
                 interactive_source.queue_playback_file(audio_path)
                 window.set_reactive(True)
                 playback_audio_file(str(audio_path))

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Tuple
 
 from .base import TextToSpeechEngine
 
@@ -37,19 +37,35 @@ class TextToSpeechResponder:
 
         self._normalized[self._normalize(trigger)] = response
 
+    def find_response(self, text: str) -> Tuple[str, bool]:
+        """Restituisce la risposta e se è stata trovata una corrispondenza esatta."""
+
+        normalized = self._normalize(text)
+        if normalized in self._normalized:
+            return self._normalized[normalized], True
+        return self.default_response, False
+
     def response_for(self, text: str) -> str:
         """Restituisce il testo della risposta associata a ``text``."""
 
-        return self._normalized.get(self._normalize(text), self.default_response)
+        response, _ = self.find_response(text)
+        return response
+
+    def synthesize(self, response_text: str) -> Path:
+        """Genera il file audio a partire dal testo fornito."""
+
+        filename = f"response_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex}.wav"
+        output_path = self.output_dir / filename
+        self.engine.synthesize_to_file(response_text, str(output_path))
+        return output_path
 
     def respond(self, text: str) -> tuple[str, Path]:
         """Genera il file audio corrispondente alla risposta."""
 
         response_text = self.response_for(text)
-        filename = f"response_{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex}.wav"
-        output_path = self.output_dir / filename
-        self.engine.synthesize_to_file(response_text, str(output_path))
+        output_path = self.synthesize(response_text)
         return response_text, output_path
+
 
     # ------------------------------------------------------------------
     @classmethod
