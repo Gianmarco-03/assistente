@@ -1,15 +1,17 @@
-"""Azioni associate alle classi di intent riconosciute dal modello."""
+"""Dispatcher per gli intent gestiti dal pacchetto ``actions``."""
 
 from __future__ import annotations
 
-from typing import Callable, Dict
+from functools import lru_cache
+from importlib import import_module
+from typing import Callable
+
+Handler = Callable[[], str]
 
 
-def _static(message: str) -> Callable[[], str]:
-    def _action() -> str:
-        return message
-
-    return _action
+@lru_cache(maxsize=None)
+def _load_handler(intent: str) -> Handler | None:
+    """Restituisce l'handler associato all'intent, se disponibile."""
 
 
 
@@ -78,14 +80,11 @@ _INTENT_ACTIONS: Dict[str, Callable[[], str]] = {
 
 
 def handle(intent: str) -> str:
-    """Restituisce il messaggio associato all'intent.
+    """Invoca l'handler associato all'intent oppure restituisce un fallback."""
 
-    Se l'intent non è riconosciuto viene restituita una frase generica.
-    """
-
-    action = _INTENT_ACTIONS.get(intent)
-    if action is not None:
-        return action()
+    handler = _load_handler(intent)
+    if handler is not None:
+        return handler()
     normalized = intent.replace("_", " ")
     return f"Questa richiesta appartiene alla classe '{normalized}'."
 
