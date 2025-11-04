@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -85,6 +86,13 @@ class SphereVisualizer(QtWidgets.QWidget):
         self.reactive = False
         self.profile_samples = 256
         self.colatitude_norm = np.arccos(self.normals[:, 1]) / np.pi
+        self._last_frame_time = time.perf_counter()
+        self._idle_pulse_phase = 0.0
+        self._audio_pulse_phase = 0.0
+        self.idle_pulse_frequency = 0.45
+        self.idle_pulse_amplitude = 0.08
+        self.idle_cloud_amplitude = 0.12
+        self.audio_pulse_base_frequency = 1.0
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -145,15 +153,35 @@ class SphereVisualizer(QtWidgets.QWidget):
         self.rotation_angle = (self.rotation_angle + self.rotation_speed) % 360.0
         rotation_matrix = self._rotation_matrix(self.rotation_axis, self.rotation_angle)
 
-        # 2) se non deve reagire all'audio, ruota solo la forma base
+        # 2) se non deve reagire all'audio, applica una pulsazione morbida
         if not self.reactive:
-            rotated_points = self.base_points @ rotation_matrix.T
-            rotated_cloud = self.cloud_base @ rotation_matrix.T
+            now = time.perf_counter()
+            elapsed = now - self._last_frame_time
+            self._last_frame_time = now
+            self._idle_pulse_phase = (
+                self._idle_pulse_phase
+                + elapsed * self.idle_pulse_frequency * 2.0 * np.pi
+            ) % (2.0 * np.pi)
+            pulse_wave = np.sin(self._idle_pulse_phase)
+            sphere_scale = 1.0 + self.idle_pulse_amplitude * pulse_wave
+            cloud_scale = 1.0 + self.idle_cloud_amplitude * pulse_wave
+
+            scaled_points = self.base_points * sphere_scale
+            scaled_cloud = self.cloud_base * cloud_scale
+            rotated_points = scaled_points @ rotation_matrix.T
+            rotated_cloud = scaled_cloud @ rotation_matrix.T
             self.scatter.setData(pos=rotated_points)
             self.cloud.setData(pos=rotated_cloud)
             return
 
         # 3) altrimenti: usa l'audio come prima
+        now = time.perf_counter()
+        elapsed = now - self._last_frame_time
+        self._last_frame_time = now
+        self._idle_pulse_phase = (
+            self._idle_pulse_phase
+            + elapsed * self.idle_pulse_frequency * 2.0 * np.pi
+        ) % (2.0 * np.pi)
         response_profile = self.analyzer.spectrum_for_points(self.profile_samples)
         phi_axis = np.linspace(0.0, 1.0, self.profile_samples)
         radial_profile = np.interp(self.colatitude_norm, phi_axis, response_profile)
@@ -161,10 +189,19 @@ class SphereVisualizer(QtWidgets.QWidget):
         global_level = response_profile.mean()
         combined = 0.7 * radial_profile + 0.3 * global_level
         volume = self.analyzer.volume_level()
-        scale = 1.0 + self.analyzer.config.volume_strength * volume
-        radial_offset = scale * (
-            self.base_radius + self.analyzer.config.response_strength * combined
-        )
+        global_level_clamped = np.clip(global_level, 0.0, 1.0)
+        volume_clamped = np.clip(volume, 0.0, 1.0)
+
+        pulse_speed = self.audio_pulse_base_frequency + 3.5 * volume_clamped
+        self._audio_pulse_phase = (
+            self._audio_pulse_phase + elapsed * pulse_speed * 2.0 * np.pi
+        ) % (2.0 * np.pi)
+        pulse_wave = np.sin(self._audio_pulse_phase)
+
+        base_radius = self.base_radius + self.analyzer.config.response_strength * combined
+        audio_pulse_strength = 0.18 + 0.55 * volume_clamped + 0.35 * global_level_clamped
+        radial_offset = base_radius * (1.0 + audio_pulse_strength * 0.28 * pulse_wave)
+        radial_offset = np.clip(radial_offset, 0.05, None)
 
         half = self.profile_samples // 2
         phi_half_axis = np.linspace(0.0, 1.0, half)
@@ -184,8 +221,9 @@ class SphereVisualizer(QtWidgets.QWidget):
         profile_z -= profile_z.mean()
 
         new_positions = self.normals * radial_offset[:, np.newaxis]
-        new_positions[:, 0] += self.horizontal_strength * profile_x
-        new_positions[:, 2] += self.horizontal_strength * profile_z
+        lateral_gain = self.horizontal_strength * (0.25 + 0.55 * audio_pulse_strength)
+        new_positions[:, 0] += lateral_gain * profile_x
+        new_positions[:, 2] += lateral_gain * profile_z
 
         # applica la rotazione calcolata all'inizio
         rotated_points = new_positions @ rotation_matrix.T
@@ -211,8 +249,9 @@ class SphereVisualizer(QtWidgets.QWidget):
         cloud_profile_z -= cloud_profile_z.mean()
 
         cloud_gain = 1.0 + 0.35 * global_level + 0.55 * volume
+        cloud_pulse = 1.0 + audio_pulse_strength * 0.35 * pulse_wave
         dynamic_cloud_radius = (
-            self.cloud_base_radii * cloud_gain
+            self.cloud_base_radii * cloud_gain * cloud_pulse
             + self.analyzer.config.response_strength * 0.28 * cloud_profile
         )
         cloud_positions = self.cloud_directions * dynamic_cloud_radius[:, np.newaxis]
@@ -228,6 +267,7 @@ class SphereVisualizer(QtWidgets.QWidget):
     def set_reactive(self, on: bool) -> None:
         """Accende o spegne l'animazione guidata dall'audio."""
         self.reactive = on
+        self._last_frame_time = time.perf_counter()
         if not on:
             # svuota i dati dell'audio, così al prossimo frame non si deforma
             self.analyzer.mute()
