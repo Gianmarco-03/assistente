@@ -74,7 +74,7 @@ def oversample(texts, labels, min_count=30, random_state=42):
 
 
 def build_pipeline() -> Pipeline:
-    """Restituisce una pipeline TF-IDF + LinearSVC."""
+    """Restituisce una pipeline TF-IDF + MLPClassifier."""
 
     """TF-IDF + MLP (Adam)."""
     return Pipeline([
