@@ -5,13 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
-from typing import Dict
-
 import threading
+from pathlib import Path
 
 from app import create_analyzer_for_file, create_qt_application, playback_audio_file, run_visualizer
-from audio.analyzer import AudioAnalyzer    
 from audio.analyzer import AudioAnalyzer
 from audio.config import AudioConfig
 from audio.microphone import InteractiveAudioSource, MicrophoneSource
@@ -20,12 +17,6 @@ from intent_router import IntentRouter, IntentRouterError
 from tts.pyttsx3_engine import Pyttsx3Engine
 from tts.responder import TextToSpeechResponder
 from visualization.sphere import SphereVisualizer
-
-DEFAULT_RESPONSES: Dict[str, str] = {
-    "ciao": "Ciao! Sono qui per aiutarti con la visualizzazione della sfera.",
-    "come stai": "Sto benissimo, grazie! Pronta a generare nuove animazioni.",
-    "aiuto": "Dimmi pure come posso assisterti con la sfera interattiva.",
-}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -208,7 +199,7 @@ def run_play_command(args: argparse.Namespace) -> int:
     return run_visualizer(analyzer)
 
 
-def load_responses(path: Path) -> Dict[str, str]:
+def load_responses(path: Path) -> dict[str, str]:
     with path.open("r", encoding="utf8") as handle:
         data = json.load(handle)
     if not isinstance(data, dict):
@@ -220,9 +211,9 @@ def run_speak_command(args: argparse.Namespace) -> int:
     if args.blocksize <= 0:
         raise SystemExit("Il parametro --blocksize deve essere un intero positivo.")
 
-    responses = DEFAULT_RESPONSES.copy()
+    responses: dict[str, str] = {}
     if args.responses_json:
-        responses.update(load_responses(args.responses_json))
+        responses = load_responses(args.responses_json)
 
     config = AudioConfig(blocksize=args.blocksize, loop_track=False)
 
@@ -262,7 +253,7 @@ def run_speak_command(args: argparse.Namespace) -> int:
         if playback_thread is not None and not playback_thread.is_alive():
             playback_thread.start()
     try:
-                    return run_visualizer(
+        return run_visualizer(
             analyzer,
             window_title="Risposta vocale",
             on_start=launch_playback if playback_thread is not None else None,
@@ -276,9 +267,9 @@ def run_listen_command(args: argparse.Namespace) -> int:
     if args.blocksize <= 0:
         raise SystemExit("Il parametro --blocksize deve essere un intero positivo.")
 
-    responses = DEFAULT_RESPONSES.copy()
+    responses: dict[str, str] = {}
     if args.responses_json:
-        responses.update(load_responses(args.responses_json))
+        responses = load_responses(args.responses_json)
 
     config = AudioConfig(blocksize=args.blocksize, loop_track=False)
 
