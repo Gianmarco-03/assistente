@@ -117,65 +117,66 @@ intent analizzando i file `massive_*` presenti nella cartella `MASSIVE_dataset`
 (`annot_utt`). Se un intent non ha ancora parametri annotati la colonna mostra
 il simbolo `—`.
 
-| Intent | Parametri (slot) |
-| --- | --- |
-| `alarm_query` | — |
-| `alarm_remove` | — |
-| `alarm_set` | — |
-| `audio_volume_down` | — |
-| `audio_volume_mute` | — |
-| `audio_volume_other` | — |
-| `audio_volume_up` | — |
-| `calendar_query` | — |
-| `calendar_remove` | — |
-| `calendar_set` | — |
-| `cooking_query` | — |
-| `cooking_recipe` | — |
-| `datetime_convert` | — |
-| `datetime_query` | — |
-| `email_addcontact` | — |
-| `email_query` | — |
-| `email_querycontact` | — |
-| `email_sendemail` | — |
-| `general_greet` | — |
-| `general_joke` | — |
-| `general_quirky` | — |
-| `iot_cleaning` | — |
-| `iot_coffee` | — |
-| `iot_hue_lightchange` | — |
-| `iot_hue_lightdim` | — |
-| `iot_hue_lightoff` | — |
-| `iot_hue_lighton` | — |
-| `iot_hue_lightup` | — |
-| `iot_wemo_off` | — |
-| `iot_wemo_on` | — |
-| `lists_createoradd` | — |
-| `lists_query` | — |
-| `lists_remove` | — |
-| `music_dislikeness` | — |
-| `music_likeness` | — |
-| `music_query` | — |
-| `music_settings` | — |
-| `news_query` | — |
-| `play_audiobook` | — |
-| `play_game` | — |
-| `play_music` | — |
-| `play_podcasts` | — |
-| `play_radio` | — |
-| `qa_currency` | — |
-| `qa_definition` | — |
-| `qa_factoid` | — |
-| `qa_maths` | — |
-| `qa_stock` | — |
-| `recommendation_events` | — |
-| `recommendation_locations` | — |
-| `recommendation_movies` | — |
-| `social_post` | — |
-| `social_query` | — |
-| `takeaway_order` | — |
-| `takeaway_query` | — |
-| `transport_query` | — |
-| `transport_taxi` | — |
-| `transport_ticket` | — |
-| `transport_traffic` | — |
-| `weather_query` | — |
+| Intent                     | Parametri (slot)                                             |
+| -------------------------- | ------------------------------------------------------------ |
+| `alarm_query`              | `datetime`, `alarm_name`                                     |
+| `alarm_remove`             | `datetime`, `alarm_name`                                     |
+| `alarm_set`                | `datetime`, `alarm_name`, `recurrence`                       |
+| `audio_volume_down`        | `device`, `location`                                         |
+| `audio_volume_mute`        | `device`, `location`                                         |
+| `audio_volume_other`       | `device`, `location`, `volume_level`                         |
+| `audio_volume_up`          | `device`, `location`                                         |
+| `calendar_query`           | `datetime`, `event_name`, `location`, `participant`          |
+| `calendar_remove`          | `datetime`, `event_name`                                     |
+| `calendar_set`             | `datetime`, `event_name`, `location`, `participant`          |
+| `cooking_query`            | `dish_name`, `ingredient`, `dietary_preference`              |
+| `cooking_recipe`           | `dish_name`, `ingredient`, `dietary_preference`              |
+| `datetime_convert`         | `source_datetime`, `target_timezone`                         |
+| `datetime_query`           | `datetime`, `location`                                       |
+| `email_addcontact`         | `contact_name`, `email_address`                              |
+| `email_query`              | `contact_name`, `datetime`, `email_subject`                  |
+| `email_querycontact`       | `contact_name`                                               |
+| `email_sendemail`          | `contact_name`, `email_subject`, `message_body`              |
+| `general_greet`            | —                                                            |
+| `general_joke`             | —                                                            |
+| `general_quirky`           | —                                                            |
+| `iot_cleaning`             | `device`, `location`                                         |
+| `iot_coffee`               | `device`, `drink_type`, `size`, `strength`                   |
+| `iot_hue_lightchange`      | `device`, `location`, `color`                                |
+| `iot_hue_lightdim`         | `device`, `location`, `brightness`                           |
+| `iot_hue_lightoff`         | `device`, `location`                                         |
+| `iot_hue_lighton`          | `device`, `location`, `color`                                |
+| `iot_hue_lightup`          | `device`, `location`, `brightness`                           |
+| `iot_wemo_off`             | `device`, `location`                                         |
+| `iot_wemo_on`              | `device`, `location`                                         |
+| `lists_createoradd`        | `list_name`, `list_item`                                     |
+| `lists_query`              | `list_name`, `list_item`                                     |
+| `lists_remove`             | `list_name`, `list_item`                                     |
+| `music_dislikeness`        | `music_artist`, `music_genre`, `music_name`                  |
+| `music_likeness`           | `music_artist`, `music_genre`, `music_name`                  |
+| `music_query`              | `music_artist`, `music_genre`, `music_name`                  |
+| `music_settings`           | `music_provider`, `device`, `location`                       |
+| `news_query`               | `news_category`, `news_source`, `datetime`                   |
+| `play_audiobook`           | `book_name`, `book_author`, `chapter`                        |
+| `play_game`                | `game_name`, `device`                                        |
+| `play_music`               | `music_artist`, `music_genre`, `music_name`, `playlist_name` |
+| `play_podcasts`            | `podcast_name`, `podcast_topic`, `episode_number`            |
+| `play_radio`               | `radio_name`, `radio_frequency`, `location`                  |
+| `qa_currency`              | `currency_name`, `amount`, `target_currency`                 |
+| `qa_definition`            | `word`                                                       |
+| `qa_factoid`               | `topic`                                                      |
+| `qa_maths`                 | `math_expression`                                            |
+| `qa_stock`                 | `company_name`                                               |
+| `recommendation_events`    | `event_type`, `location`, `datetime`                         |
+| `recommendation_locations` | `location`, `poi_type`, `rating`                             |
+| `recommendation_movies`    | `movie_name`, `movie_genre`, `actor_name`                    |
+| `social_post`              | `platform_name`, `message_body`, `contact_name`              |
+| `social_query`             | `platform_name`, `contact_name`                              |
+| `takeaway_order`           | `restaurant_name`, `dish_name`, `quantity`, `location`       |
+| `takeaway_query`           | `restaurant_name`, `dish_name`, `location`                   |
+| `transport_query`          | `origin`, `destination`, `datetime`, `transport_type`        |
+| `transport_taxi`           | `origin`, `destination`, `datetime`, `vehicle_type`          |
+| `transport_ticket`         | `origin`, `destination`, `datetime`, `transport_type`        |
+| `transport_traffic`        | `location`, `datetime`                                       |
+| `weather_query`            | `location`, `datetime`                                       |
+

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+
 from loss_visualizaer import plot_loss_from_list
 from dataset import DEFAULT_DATASET_DIR, LEGACY_DATASET_DIR
 
@@ -23,88 +24,53 @@ from pipeline_TR import (
 )
 
 OVERSAMPLE_SWICH = False
-DATASET_DIR = 'MASSIVE_dataset'
+DATASET_DIR = "MASSIVE_dataset"
+
+PARAM: dict[str, object] = {
+    "dataset_dir": str(DATASET_DIR),
+    "output_dir": "models",
+    "config": DEFAULT_CONFIG,
+    "train_split": DEFAULT_TRAIN_SPLIT,
+    "eval_split": DEFAULT_EVAL_SPLIT,
+    "task": "slots",
+    "oversample": False,
+}
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            f"Addestra un modello di classificazione delle risposte a partire dal dataset {DATASET_DIR}."
-        )
-    )
-    parser.add_argument(
-        "dataset_dir",
-        nargs="?",
-        default=str(DEFAULT_DATASET_DIR),
-        help=(
-            "Percorso della cartella contenente i file JSON MASSIVE (default: massive_dataset). "
-            "Se la cartella non esiste verrà usata automaticamente la directory legacy "
-            f"{LEGACY_DATASET_DIR}."
-        ),
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="models",
-        help="Cartella dove salvare il modello addestrato (default: models).",
-    )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=(
-            "Nome della configurazione del dataset (ad es. massive, hard_noisy, hard_speaker)."
-        ),
-    )
-    parser.add_argument(
-        "--train-split",
-        default=DEFAULT_TRAIN_SPLIT,
-        help="Nome dello split di training da utilizzare (default: train).",
-    )
-    parser.add_argument(
-        "--eval-split",
-        default=DEFAULT_EVAL_SPLIT,
-        help="Nome dello split di valutazione da utilizzare (default: validation).",
-    )
-    parser.add_argument(
-        "--task",
-        choices=("intent", "slots"),
-        default="intent",
-        help=(
-            "Specifica se addestrare il classificatore di intent (default) "
-            "oppure il modello di riconoscimento dei parametri (slots)."
-        ),
-    )
-    return parser.parse_args(argv)
 
-
-def train(argv: list[str] | None = None, Oversample : bool = False) -> int:
+def train() -> int:
     # 1) allenamento
-    args = parse_args(argv)
-    task = args.task
+    params = PARAM
+    task = params["task"]
 
-    output_dir = Path(args.output_dir)
+    output_dir = Path(params["output_dir"])
     losses: list[dict] = []
 
     if task == "intent":
+        print("====================================")
+        print("starting Intent Classifier training")
+        print("====================================")
         bundle, report = train_model(
-            args.dataset_dir,
-            config=args.config,
-            train_split=args.train_split,
-            eval_split=args.eval_split,
-            Oversample=OVERSAMPLE_SWICH,
+            params["dataset_dir"],
+            config=params["config"],
+            train_split=params["train_split"],
+            eval_split=params["eval_split"],
+            Oversample=params.get("oversample", False),
         )
 
         filename = MODEL_FILENAME
-        if Oversample:
+        oversample = params.get("oversample", False)
+        if oversample:
             filename = "text_response_model_oversample.joblib"
         model_path = save_model(
             bundle,
             output_dir,
             filename=filename,
-            Oversample=OVERSAMPLE_SWICH,
+            Oversample=oversample,
         )
 
         pipeline = bundle.get("pipeline")
-        if Oversample:
+        if oversample:
             log_path = output_dir / "training_oversample_log.json"
         else:
             log_path = output_dir / "training_log.json"
@@ -122,11 +88,14 @@ def train(argv: list[str] | None = None, Oversample : bool = False) -> int:
             else:
                 print("\n⚠️ Nessuna loss da salvare (il classifier non espone 'loss_curve_').")
     else:
+        print("====================================")
+        print("starting Token Recognizer training")
+        print("====================================")
         bundle, report = train_token_model(
-            args.dataset_dir,
-            config=args.config,
-            train_split=args.train_split,
-            eval_split=args.eval_split,
+            params["dataset_dir"],
+            config=params["config"],
+            train_split=params["train_split"],
+            eval_split=params["eval_split"],
         )
         model_path = save_token_model(
             bundle,
@@ -151,7 +120,7 @@ def train(argv: list[str] | None = None, Oversample : bool = False) -> int:
     return 0
 
 def main(argv: list[str] | None = None) -> int:
-    train(argv, Oversample=OVERSAMPLE_SWICH)
+    return train()
 
 if __name__ == "__main__":  # pragma: no cover - esecuzione diretta
     raise SystemExit(main())

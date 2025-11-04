@@ -12,6 +12,7 @@ def _static(message: str) -> Callable[[], str]:
     return _action
 
 
+
 _INTENT_ACTIONS: Dict[str, Callable[[], str]] = {
     "alarm_query": _static("Questa richiesta chiede informazioni sulle sveglie impostate."),
     "alarm_remove": _static("Questa richiesta vuole cancellare una sveglia."),
