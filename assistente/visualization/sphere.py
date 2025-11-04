@@ -164,7 +164,7 @@ class SphereVisualizer(QtWidgets.QWidget):
             ) % (2.0 * np.pi)
             pulse_wave = np.sin(self._idle_pulse_phase)
             sphere_scale = 1.0 + self.idle_pulse_amplitude * pulse_wave
-            cloud_scale = 1.0 + self.idle_cloud_amplitude * pulse_wave
+            cloud_scale = 1.0 + self.idle_cloud_amplitude 
 
             scaled_points = self.base_points * sphere_scale
             scaled_cloud = self.cloud_base * cloud_scale
