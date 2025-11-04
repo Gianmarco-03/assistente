@@ -13,7 +13,7 @@ from audio.analyzer import AudioAnalyzer
 from audio.config import AudioConfig
 from audio.microphone import InteractiveAudioSource, MicrophoneSource
 from audio.recognizer import BackgroundRecognizer, RecognitionConfig
-from intent_router import IntentRouter, IntentRouterError
+from intent_router import IntentRouter, IntentRouterError, get_annot_utt
 from tts.pyttsx3_engine import Pyttsx3Engine
 from tts.responder import TextToSpeechResponder
 from visualization.sphere import SphereVisualizer
@@ -206,6 +206,21 @@ def load_responses(path: Path) -> dict[str, str]:
         raise SystemExit("Il file JSON deve contenere un dizionario 'input' -> 'response'.")
     return {str(key): str(value) for key, value in data.items()}
 
+def _summarize_slots(slots: dict[str, list[str]] | None) -> str:
+    if not slots:
+        return "(nessuno)"
+    parts: list[str] = []
+    for name in sorted(slots):
+        values = [value.strip() for value in slots[name] if value and value.strip()]
+        if not values:
+            continue
+        joined = "; ".join(values)
+        parts.append(f"{name}={joined}")
+    if not parts:
+        return "(nessuno)"
+    return ", ".join(parts)
+
+
 
 def run_speak_command(args: argparse.Namespace) -> int:
     if args.blocksize <= 0:
@@ -226,16 +241,27 @@ def run_speak_command(args: argparse.Namespace) -> int:
 
     response_text, matched = responder.find_response(args.text)
     intent_label: str | None = None
+    slot_annotation: str | None = None
+    slot_values: dict[str, list[str]] | None = None
+
     if not matched:
         router = IntentRouter(model_path=args.model_path)
         try:
             intent_label, response_text = router.describe(args.text)
         except IntentRouterError as exc:
             print(f"[errore] Impossibile analizzare la richiesta: {exc}")
+        else:
+            try:
+                slot_annotation, slot_values = get_annot_utt(args.text)
+            except IntentRouterError as exc:
+                print(f"[errore] Impossibile riconoscere i parametri: {exc}")
     audio_path = responder.synthesize(response_text)
     if intent_label is not None:
         print(f"Intent rilevato: {intent_label}")
-        print(f"Risposta generata: {response_text}")
+        if slot_annotation:
+            print(f"Annotazione parametri: {slot_annotation}")
+        print(f"Parametri riconosciuti: {_summarize_slots(slot_values)}")
+    print(f"Risposta generata: {response_text}")
     print(f"File audio creato: {audio_path}")
 
     analyzer = create_analyzer_for_file(str(audio_path), config)
@@ -331,6 +357,9 @@ def run_listen_command(args: argparse.Namespace) -> int:
                 print(f"Utente: {cleaned}")
                 response_text, matched = responder.find_response(cleaned)
                 intent_label: str | None = None
+                slot_annotation: str | None = None
+                slot_values: dict[str, list[str]] | None = None
+
                 if not matched and not state["router_disabled"]:
                     if router is None:
                         router = IntentRouter(model_path=args.model_path)
@@ -338,12 +367,20 @@ def run_listen_command(args: argparse.Namespace) -> int:
                         intent_label, response_text = router.describe(cleaned)
                     except IntentRouterError as exc:
                         print(f"[errore] Impossibile analizzare la richiesta: {exc}")
+                    else:
+                        try:
+                            slot_annotation, slot_values = get_annot_utt(cleaned)
+                        except IntentRouterError as exc:
+                            print(f"[errore] Impossibile riconoscere i parametri: {exc}")
                         router = None
                         state["router_disabled"] = True
                 audio_path = responder.synthesize(response_text)
                 print(f"Assistente: {response_text}")
                 if intent_label is not None:
                     print(f"Intent riconosciuto: {intent_label}")
+                    if slot_annotation:
+                        print(f"Annotazione parametri: {slot_annotation}")
+                    print(f"Parametri riconosciuti: {_summarize_slots(slot_values)}")
                 interactive_source.queue_playback_file(audio_path)
                 window.set_reactive(True)
                 playback_audio_file(str(audio_path))

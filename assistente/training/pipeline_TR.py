@@ -202,8 +202,10 @@ def prepare_token_dataset(
         sent_features: List[Dict[str, object]] = []
         sent_labels: List[str] = []
 
+        intent = getattr(sample, "intent", None)
         for idx, tag in enumerate(tags):
             feature = extract_token_features(tokens, idx)
+            feature['intent'] = intent
             sent_features.append(feature)
             sent_labels.append(tag)
 
@@ -266,24 +268,26 @@ def train_token_model(
         true_flat.extend(y_true_sent)
         pred_flat.extend(y_pred_sent)
 
-    report = "\n=== REPORT COMPLETO (con O) ===\n"  
+    report = ("\n=== REPORT COMPLETO (con O) ===\n"  
     + classification_report(
             true_flat,
             pred_flat,
             zero_division=0,
         )
+    )
 
     # report senza O
     true_wo = [t for t in true_flat if t != "O"]
     pred_wo = [p for t, p in zip(true_flat, pred_flat) if t != "O"]
 
     if true_wo:
-            report += "\n=== REPORT SLOT (senza O) ===\n"
+            report += ("\n=== REPORT SLOT (senza O) ===\n"
             + classification_report(
                 true_wo,
                 pred_wo,
                 zero_division=0,
             )
+        )
     else:
         report += ("\nNessuna etichetta diversa da 'O' trovata nello split di valutazione.")
 
