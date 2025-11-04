@@ -1,9 +1,11 @@
-"""Pipeline di addestramento basata sul dataset ``zendod_dataset``."""
+"""Pipeline di addestramento basata sul dataset MASSIVE (Amazon Science)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional, Tuple
+from collections import Counter
+import random
 
 try:  # pragma: no cover - dipendenze opzionali
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -27,15 +29,48 @@ except ImportError as exc:  # pragma: no cover
         "Puoi installarla con: pip install joblib"
     ) from exc
 
-from .dataset import load_samples
+try:
+    from .dataset import load_samples
+except ImportError:
+    from dataset import load_samples
 
-
-DEFAULT_CONFIG = "massive"
+DEFAULT_CONFIG = "massive_it"
 DEFAULT_TRAIN_SPLIT = "train"
 DEFAULT_EVAL_SPLIT = "validation"
 
 
 MODEL_FILENAME = "text_response_model.joblib"
+
+def oversample(texts, labels, min_count=30, random_state=42):
+    """
+    Aumenta artificialmente il numero di esempi per le classi più rare.
+
+    Parametri:
+        texts (list[str]): frasi di input.
+        labels (list[str]): etichette corrispondenti.
+        min_count (int): numero minimo desiderato di esempi per classe.
+        random_state (int): seme per la riproducibilità.
+
+    Ritorna:
+        new_texts, new_labels: liste con esempi bilanciati.
+    """
+    random.seed(random_state)
+    counter = Counter(labels)
+    new_texts, new_labels = list(texts), list(labels)
+
+    for cls, count in counter.items():
+        if count < min_count:
+            needed = min_count - count
+            # campiona esempi esistenti di quella classe
+            samples = [t for t, l in zip(texts, labels) if l == cls]
+            for _ in range(needed):
+                s = random.choice(samples)
+                new_texts.append(s)
+                new_labels.append(cls)
+
+    print(f"✅ Oversampling completato ({len(labels)} → {len(new_labels)} esempi)")
+    return new_texts, new_labels
+
 
 
 def build_pipeline() -> Pipeline:
@@ -87,6 +122,7 @@ def train_model(
     config: str = DEFAULT_CONFIG,
     train_split: str = DEFAULT_TRAIN_SPLIT,
     eval_split: str = DEFAULT_EVAL_SPLIT,
+    Oversample: bool = False
 ) -> Tuple[Dict[str, Any], str]:
     """Addestra la pipeline sul dataset e restituisce un report di valutazione."""
 
@@ -96,6 +132,11 @@ def train_model(
     train_samples = load_samples(dataset_dir, config=config, split=train_split)
     train_texts = [s.prompt for s in train_samples]
     train_labels = [s.intent for s in train_samples]
+
+    # 1.5) --- TENTATOVP DI OVERSAMPLEING
+    if(Oversample):
+        train_texts, train_labels = oversample(train_texts, train_labels, min_count=30)
+
 
     # 2) --- ENCODER SULLE LABEL ---
     #    qui trasformiamo "alarm_query" -> 0, "calendar_set" -> 1, ...
@@ -136,9 +177,8 @@ def train_model(
 
 
 
-def save_model(pipeline: Pipeline, output_dir: str | Path, *, filename: str = MODEL_FILENAME) -> Path:
+def save_model(pipeline: Pipeline, output_dir: str | Path, *, filename: str = MODEL_FILENAME, Oversample : bool = False) -> Path:
     """Salva la pipeline addestrata su disco."""
-
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     file_path = output_path / filename

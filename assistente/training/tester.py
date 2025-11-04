@@ -1,17 +1,19 @@
 from pathlib import Path
 import joblib
 from sklearn.metrics import classification_report
-from dataset import load_samples  # quello della tua repo
+from dataset import DEFAULT_DATASET_DIR, LEGACY_DATASET_DIR, load_samples  
 from loss_visualizaer import plot_loss_from_json
 
 MODEL_PATH = Path("models/text_response_model.joblib")
-DATASET_DIR = Path("zendod_dataset")
+DATASET_DIR = Path(DEFAULT_DATASET_DIR)
+if not DATASET_DIR.exists() and LEGACY_DATASET_DIR.exists():
+    DATASET_DIR = LEGACY_DATASET_DIR
 CONFIG = "massive"
 SPLIT = "test"   # o "validation"
 
-def main():
+def tester(plt: bool = False, ask: bool = False, model_path : Path = MODEL_PATH):
     # 1) carica il bundle (pipeline + label_encoder)
-    bundle = joblib.load(MODEL_PATH)
+    bundle = joblib.load(model_path)
     pipeline = bundle["pipeline"]
     label_encoder = bundle["label_encoder"]
 
@@ -29,35 +31,39 @@ def main():
     # 5) ora true_labels e pred_labels sono ENTRAMBE stringhe → ok
     print("\n📊 Risultati sullo split:", SPLIT)
     print(classification_report(true_labels, pred_labels, zero_division=0))
-    plot_loss_from_json(json_path='models/training_log.json')
+    if plt:
+        plot_loss_from_json(json_path='models/training_log.json')
+    if ask:
+        print('test yourself!')
+        print("\n🤖 Assistente pronto!")
+        print("Scrivi una frase da riconoscere (digita 'exit' o 'quit' per uscire)\n")
 
-    print('test yourself!')
-    print("\n🤖 Assistente pronto!")
-    print("Scrivi una frase da riconoscere (digita 'exit' o 'quit' per uscire)\n")
+        while True:
+            try:
+                text = input("🎙️  Tu: ").strip()
+                if not text:
+                    continue
+                if text.lower() in {"exit", "quit", "esci"}:
+                    print("👋 Ciao!")
+                    break
 
-    while True:
-        try:
-            text = input("🎙️  Tu: ").strip()
-            if not text:
-                continue
-            if text.lower() in {"exit", "quit", "esci"}:
-                print("👋 Ciao!")
+                # Predizione
+                y_pred = pipeline.predict([text])[0]
+
+                # Se abbiamo un label encoder, riconvertiamo da numerico a stringa
+                if label_encoder is not None:
+                    intent = label_encoder.inverse_transform([y_pred])[0]
+                else:
+                    intent = y_pred
+
+                print(f"🤖 Intent riconosciuto: {intent}\n")
+
+            except KeyboardInterrupt:
+                print("\n👋 Interrotto dall’utente.")
                 break
 
-            # Predizione
-            y_pred = pipeline.predict([text])[0]
 
-            # Se abbiamo un label encoder, riconvertiamo da numerico a stringa
-            if label_encoder is not None:
-                intent = label_encoder.inverse_transform([y_pred])[0]
-            else:
-                intent = y_pred
-
-            print(f"🤖 Intent riconosciuto: {intent}\n")
-
-        except KeyboardInterrupt:
-            print("\n👋 Interrotto dall’utente.")
-            break
-
+def main():
+    tester(plt = True, ask = False)
 if __name__ == "__main__":
     main()
