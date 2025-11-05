@@ -79,6 +79,14 @@ Il modello verrà salvato nella cartella `models/` (configurabile con `--output-
 un report di valutazione basato sullo split scelto. Questo modello può essere utilizzato per arricchire le risposte vocali e
 aggiornare le mappature di `TextToSpeechResponder`.
 
+Per analizzare rapidamente la distribuzione degli intent nel dataset puoi utilizzare l'apposito visualizzatore:
+
+```bash
+python -m assistente.training.data_visualizer --config massive --split train --no-show
+```
+
+L'utility stampa una tabella riassuntiva e, se `matplotlib` è installato, genera anche un grafico (salvabile con `--save-plot`).
+
 ## Licenza
 
 Questo progetto è fornito così com'è per scopi dimostrativi ed educativi.

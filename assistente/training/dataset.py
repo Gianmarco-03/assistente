@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-import csv
 import re
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:  # pragma: no cover - dipendenza opzionale
+    pd = None  # type: ignore[assignment]
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Iterable, Tuple
@@ -94,17 +96,23 @@ def parse_annotated_utterance(
 
 
 def _resolve_split_file(dataset_dir: Path, config: str, split: str) -> Path:
-    """Restituisce il percorso del file JSON lines per la configurazione richiesta."""
+    """Restituisce il percorso del file di uno split del dataset."""
 
-    filename = f"{config}_{split}.csv"
-    file_path = dataset_dir / filename
-    if not file_path.exists():
-        raise FileNotFoundError(
-            "Impossibile trovare il file dello split richiesto: "
-            f"{file_path}. Assicurati che il dataset MASSIVE sia stato estratto in 'massive_dataset/' "
-            "(oppure nella cartella legacy 'zendod_dataset/')."
-        )
-    return file_path
+    base_name = f"{config}_{split}"
+    candidates = [
+        dataset_dir / f"{base_name}.csv",
+        dataset_dir / f"{base_name}.json",
+        dataset_dir / f"{base_name}.jsonl",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(
+        "Impossibile trovare il file dello split richiesto. "
+        "Assicurati che il dataset MASSIVE sia stato estratto in 'massive_dataset/' "
+        "(oppure nella cartella legacy 'zendod_dataset/')."
+    )
 
 
 def load_samples(
@@ -126,16 +134,17 @@ def load_samples(
     if massive_dir.exists() and massive_dir.is_dir():
         dataset_root = massive_dir
 
-    csv_candidates = []
-    csv_candidates.append(dataset_root / "massive_it_train.csv")
-    candidate_by_config = dataset_root / f"{config}_{split}.csv"
-    if candidate_by_config.name != csv_candidates[0].name:
-        csv_candidates.append(candidate_by_config)
-
-    csv_path = next((candidate for candidate in csv_candidates if candidate.exists()), None)
+    csv_candidates: list[Path] = []
+    csv_path: Path | None = None
+    if pd is not None:
+        csv_candidates.append(dataset_root / "massive_it_train.csv")
+        candidate_by_config = dataset_root / f"{config}_{split}.csv"
+        if candidate_by_config.name != csv_candidates[0].name:
+            csv_candidates.append(candidate_by_config)
+        csv_path = next((candidate for candidate in csv_candidates if candidate.exists()), None)
 
     samples: List[Sample] = []
-    if csv_path is not None:
+    if csv_path is not None and pd is not None:
         try:
             dataframe = pd.read_csv(csv_path)
         except Exception as exc:  # pragma: no cover - delega alla libreria
