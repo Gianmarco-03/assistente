@@ -1,4 +1,9 @@
 *.joblib
 /tts_output
 /MASSIVE_dataset
-plase_simulation.json
+<<<<<<< HEAD
+simulation.json
+=======
+__pycache__/
+*.pyc
+>>>>>>> d18360696af4ab4b78cfbd95c0efae7d38e5e34f

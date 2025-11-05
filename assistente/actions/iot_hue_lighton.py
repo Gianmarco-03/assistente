@@ -6,10 +6,24 @@ from .utils import save_state, load_state
 
 def handle(args : dict) -> str:
     simulation = load_state()
-    if args['house_place'] in simulation['place']:
-        simulation['alarms'].append(args['time'])
-    else: 
-        return (f'la stanza {args['location']} non esiste (idiota).')
-
+    res = ""
+    found = []
+    not_found = []
+    for room in args['house_place']:
+        try:
+            light = simulation['place'][room]
+            
+            found.append(room + ', ')
+            simulation['place'][room]['isOn'] = True
+        except :
+            not_found.append[room]
     save_state(simulation)
-    return (f'luce accesa in {args['location']}.')
+    if len(found) != 0:
+        res += "ho acceso la luce in "
+        for room in found:
+            res += room + ", "
+    if len(not_found) != 0:
+        res += "non ho trovato le seguenti stanze "
+        for room in found:
+            res += room + ", "
+    return res

@@ -1,8 +1,20 @@
 {
     "place": {
-        "cucina": false,
-        "salotto": false,
-        "camera da letto": false
+        "cucina": {
+            "isOn": false,
+            "isSmart": false,
+            "intensity": 0
+        },
+        "salotto": {
+            "isOn": true,
+            "isSmart": false,
+            "intensity": 0
+        },
+        "camera da letto": {
+            "isOn": false,
+            "isSmart": false,
+            "intensity": 0
+        }
     },
     "alarms": [
         [
