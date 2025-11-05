@@ -364,32 +364,36 @@ def run_listen_command(args: argparse.Namespace) -> int:
                     if router is None:
                         router = IntentRouter(model_path=args.model_path)
                     try:
-                        intent_label, response_text = router.describe(cleaned)
+                        # versione ESTESA: intent + messaggio + slots + annotazione
+                        intent_label, response_text, slot_values, slot_annotation = router.describe_full(cleaned)
                     except IntentRouterError as exc:
                         print(f"[errore] Impossibile analizzare la richiesta: {exc}")
                     else:
-                        try:
-                            slot_annotation, slot_values = get_annot_utt(cleaned)
-                        except IntentRouterError as exc:
-                            print(f"[errore] Impossibile riconoscere i parametri: {exc}")
+                        # se vuoi disattivare il router dopo la prima volta, lascio la tua logica
                         router = None
                         state["router_disabled"] = True
+
+                # sintesi vocale
                 audio_path = responder.synthesize(response_text)
                 print(f"Assistente: {response_text}")
+
                 if intent_label is not None:
                     print(f"Intent riconosciuto: {intent_label}")
                     if slot_annotation:
                         print(f"Annotazione parametri: {slot_annotation}")
                     print(f"Parametri riconosciuti: {_summarize_slots(slot_values)}")
+
                 interactive_source.queue_playback_file(audio_path)
                 window.set_reactive(True)
                 playback_audio_file(str(audio_path))
+
             except Exception as exc:  # pragma: no cover - errori di runtime in thread
                 print(f"[errore] Impossibile completare la risposta: {exc}")
             finally:
                 recognizer.set_paused(False)
                 window.set_reactive(False)
                 state["busy"] = False
+
 
         threading.Thread(target=worker, daemon=True).start()
 

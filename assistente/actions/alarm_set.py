@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from .utils import save_state, load_state
 
-def handle() -> str:
-    return 'Questa richiesta desidera impostare una nuova sveglia.'
+def handle(args: dict) -> str:
+    simulation = load_state()
+    if args['time'] not in simulation['alarms']:
+        simulation['alarms'].append(args['time'])
+    save_state(simulation)
+
+    return (f"sveglia impostata alle {args['time']}")
+

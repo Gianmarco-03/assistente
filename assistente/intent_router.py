@@ -7,14 +7,14 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple, Any
 
 import joblib
-from sklearn.calibration import LabelEncoder
+from sklearn.preprocessing import LabelEncoder  # corretto: da preprocessing
 from sklearn.pipeline import Pipeline
 
 import actions
-from training.pipeline_TR import (
+from training.pipeline_TR import (  # deve essere il modulo dove hai messo CRF, tokenize, extract_token_features
     TOKEN_MODEL_FILENAME,
     extract_token_features,
     tokenize,
@@ -31,13 +31,29 @@ class SlotRecognizerError(IntentRouterError):
 
 @dataclass(slots=True)
 class IntentRouter:
-    """Carica il modello addestrato e restituisce l'azione associata all'intent."""
+    """
+    Carica il modello addestrato per l'intent e fornisce anche l'annotazione degli slot
+    usando il modello CRF (che ora tiene conto dell'intent).
+    """
+
+    def describe_full(self, text: str):
+        """
+        Versione estesa: restituisce anche gli slot e l'annotazione.
+        Ordine: intent, messaggio, slots, annot_utt
+        """
+        intent = self.predict_intent(text)
+        # passiamo l'intent al riconoscitore di slot
+        annotated, slots = get_annot_utt(text, intent=intent)
+        message = actions.handle(intent=intent, slots=slots)
+        return intent, message, slots, annotated
+
 
     model_path: Path | None = None
     _pipeline: Pipeline | None = None
     _label_encoder: LabelEncoder | None = None
 
     def __post_init__(self) -> None:
+        # carica il modello di intent
         if self.model_path is None:
             base_dir = Path(__file__).resolve().parent.parent
             self.model_path = base_dir / "models" / "text_response_model.joblib"
@@ -55,14 +71,8 @@ class IntentRouter:
                 f"Modello di classificazione non trovato: {self.model_path}"
             )
         try:
-            from joblib import load
-        except ImportError as exc:  # pragma: no cover - dipendenza opzionale
-            raise IntentRouterError(
-                "È necessario installare joblib per utilizzare il classificatore"
-            ) from exc
-        try:
-            bundle = load(self.model_path)
-        except Exception as exc:  # pragma: no cover - errori di I/O imprevedibili
+            bundle = joblib.load(self.model_path)
+        except Exception as exc:
             raise IntentRouterError(
                 f"Impossibile caricare il modello da {self.model_path}: {exc}"
             ) from exc
@@ -76,7 +86,6 @@ class IntentRouter:
 
     def predict_intent(self, text: str) -> str:
         """Restituisce la label dell'intent stimata per ``text``."""
-
         self._ensure_loaded()
         if self._pipeline is None or self._label_encoder is None:  # pragma: no cover
             raise IntentRouterError("Il modello non è stato inizializzato correttamente.")
@@ -84,13 +93,20 @@ class IntentRouter:
         label = self._label_encoder.inverse_transform(prediction)[0]
         return str(label)
 
-    def describe(self, text: str) -> Tuple[str, str]:
-        """Restituisce la coppia ``(intent, messaggio)`` per l'input fornito."""
-
+    def describe(self, text: str) -> Tuple[str, str, Dict[str, List[str]], str]:
+        """
+        Restituisce (intent, messaggio, slots, annot_utt)
+        per l'input fornito.
+        """
         intent = self.predict_intent(text)
+        annotated, slots = get_annot_utt(text, intent=intent)
         message = actions.handle(intent)
-        return intent, message
+        return intent, message, slots, annotated
 
+
+# ----------------------------------------------------------
+# FUNZIONI DI SUPPORTO PER IL MODELLO DI SLOT (CRF)
+# ----------------------------------------------------------
 
 def _resolve_token_model_path(model_path: Path | None = None) -> Path:
     if model_path is not None:
@@ -100,26 +116,30 @@ def _resolve_token_model_path(model_path: Path | None = None) -> Path:
 
 
 @lru_cache(maxsize=None)
-def _load_token_bundle(model_path: Path) -> Tuple[object, object, LabelEncoder]:
+def _load_token_bundle(model_path: Path) -> Dict[str, Any]:
+    """
+    Carica il bundle del modello di slot.
+    Con il nuovo training è del tipo:
+    {
+        "crf": <CRF>,
+        "labels": [...],
+        "config": {...}
+    }
+    """
     try:
         bundle = joblib.load(model_path)
-    except FileNotFoundError as exc:  # pragma: no cover - I/O dipendente
+    except FileNotFoundError as exc:
         raise SlotRecognizerError(
             f"Modello parametri non trovato: {model_path}"
         ) from exc
-    except Exception as exc:  # pragma: no cover - errori joblib
+    except Exception as exc:
         raise SlotRecognizerError(
             f"Impossibile caricare il modello dei parametri: {exc}"
         ) from exc
-    try:
-        vectorizer = bundle["vectorizer"]
-        classifier = bundle["classifier"]
-        label_encoder: LabelEncoder = bundle["label_encoder"]
-    except KeyError as exc:  # pragma: no cover - bundle malformato
-        raise SlotRecognizerError(
-            "Il modello parametri non contiene gli oggetti necessari."
-        ) from exc
-    return vectorizer, classifier, label_encoder
+
+    if "crf" not in bundle:
+        raise SlotRecognizerError("Il modello parametri non contiene il CRF.")
+    return bundle
 
 
 def _parse_label(label: str) -> Tuple[str | None, str | None]:
@@ -144,6 +164,10 @@ def _format_tokens(tokens: Sequence[str]) -> str:
 
 
 def _collect_slots(tokens: Sequence[str], labels: Sequence[str]) -> Dict[str, List[str]]:
+    """
+    Ricostruisce gli slot da una sequenza di label BIO.
+    Ritorna dict: slot_name -> [valori...]
+    """
     slots: Dict[str, List[str]] = defaultdict(list)
     current_name: str | None = None
     current_tokens: List[str] = []
@@ -172,6 +196,10 @@ def _collect_slots(tokens: Sequence[str], labels: Sequence[str]) -> Dict[str, Li
 
 
 def _build_annotation(tokens: Sequence[str], labels: Sequence[str]) -> str:
+    """
+    Ricostruisce una stringa stile annot_utt: "metti [music_genre: jazz] per favore"
+    partendo da token e BIO.
+    """
     parts: List[str] = []
     plain_tokens: List[str] = []
     slot_tokens: List[str] = []
@@ -214,24 +242,39 @@ def _build_annotation(tokens: Sequence[str], labels: Sequence[str]) -> str:
     return annotated.strip()
 
 
-def get_annot_utt(frase: str, *, model_path: Path | None = None) -> Tuple[str, Dict[str, List[str]]]:
-    """Restituisce ``annot_utt`` e slot estratti dal testo fornito."""
+def get_annot_utt(
+    frase: str,
+    *,
+    intent: str | None = None,
+    model_path: Path | None = None,
+) -> Tuple[str, Dict[str, List[str]]]:
+    """
+    Restituisce ``annot_utt`` e slot estratti dal testo fornito.
 
+    Ora il modello di slot è un CRF e, se viene passato l'intent, lo usa come feature
+    per ogni token (coerente con il training).
+    """
     text = frase or ""
     tokens = tokenize(text)
     if not tokens:
         return "", {}
 
     resolved_path = _resolve_token_model_path(model_path)
-    vectorizer, classifier, label_encoder = _load_token_bundle(resolved_path)
+    bundle = _load_token_bundle(resolved_path)
+    crf = bundle["crf"]
 
-    features = [extract_token_features(tokens, index) for index in range(len(tokens))]
-    matrix = vectorizer.transform(features)
-    predicted = classifier.predict(matrix)
-    labels = label_encoder.inverse_transform(predicted)
+    # costruiamo le feature per l'intera frase
+    sent_features: List[Dict[str, Any]] = []
+    for index in range(len(tokens)):
+        feat = extract_token_features(tokens, index)
+        if intent is not None:
+            feat["intent"] = intent
+        sent_features.append(feat)
 
-    annotated = _build_annotation(tokens, labels)
-    slots = _collect_slots(tokens, labels)
+    # il CRF vuole una lista di frasi
+    predicted_seq = crf.predict([sent_features])[0]
+    annotated = _build_annotation(tokens, predicted_seq)
+    slots = _collect_slots(tokens, predicted_seq)
     return annotated or text, slots
 
 

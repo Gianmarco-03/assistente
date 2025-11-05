@@ -1,0 +1,23 @@
+{
+    "place": {
+        "cucina": false,
+        "salotto": false,
+        "camera da letto": false
+    },
+    "alarms": [
+        [
+            "10: 00"
+        ],
+        [
+            "12: 00"
+        ],
+        [
+            "11: 00"
+        ]
+    ],
+    "music": {
+        "brano": "non in riproduzione",
+        "autore": null,
+        "player": null
+    }
+}

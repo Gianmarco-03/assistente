@@ -26,12 +26,12 @@ def _load_handler(intent: str) -> Handler | None:
     return None
 
 
-def handle(intent: str) -> str:
+def handle(slots : dict,intent: str) -> str:
     """Invoca l'handler associato all'intent oppure restituisce un fallback."""
-
+    print(intent)
     handler = _load_handler(intent)
     if handler is not None:
-        return handler()
+        return handler(slots)
     normalized = intent.replace("_", " ")
     return f"Questa richiesta appartiene alla classe '{normalized}'."
 

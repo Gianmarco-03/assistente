@@ -1,3 +1,4 @@
 *.joblib
 /tts_output
 /MASSIVE_dataset
+plase_simulation.json

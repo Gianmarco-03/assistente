@@ -45,7 +45,7 @@ def _predict_slots(
 
 def tester(ask: bool = False, model_path: Path = MODEL_PATH) -> None:
     bundle = joblib.load(model_path)
-    vectorizer = bundle["vectorizer"]
+    vectorizer = bundle ["vectorizer"]
     classifier = bundle["classifier"]
     label_encoder = bundle["label_encoder"]
 
