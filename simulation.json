@@ -1,7 +1,7 @@
 {
     "place": {
         "cucina": {
-            "isOn": false,
+            "isOn": true,
             "isSmart": false,
             "intensity": 0
         },
@@ -19,17 +19,118 @@
     "alarms": [
         [
             "10: 00"
-        ],
-        [
-            "12: 00"
-        ],
-        [
-            "11: 00"
         ]
     ],
     "music": {
-        "brano": "non in riproduzione",
-        "autore": null,
-        "player": null
+        "autore": "ed sheeran",
+        "genre": "pop",
+        "playlist": "top hits 2017",
+        "song": "shape of you"
+    },
+    "known_songs": {
+        "shape of you": {
+            "autore": "ed sheeran",
+            "genre": "pop",
+            "playlist": "top hits 2017",
+            "song": "shape of you"
+        },
+        "perfect": {
+            "autore": "ed sheeran",
+            "genre": "pop",
+            "playlist": "romantic vibes"
+        },
+        "bohemian rhapsody": {
+            "autore": "queen",
+            "genre": "rock",
+            "playlist": "classic rock essentials",
+            "song": "bohemian rhapsody"
+        },
+        "another one bites the dust": {
+            "autore": "queen",
+            "genre": "rock",
+            "playlist": "classic rock essentials",
+            "song": "another one bites the dust"
+        },
+        "lose yourself": {
+            "autore": "eminem",
+            "genre": "hip hop",
+            "playlist": "rap classics"
+        },
+        "without me": {
+            "autore": "eminem",
+            "genre": "hip hop",
+            "playlist": "workout beats"
+        },
+        "rolling in the deep": {
+            "autore": "adele",
+            "genre": "soul",
+            "playlist": "powerful voices"
+        },
+        "easy on me": {
+            "autore": "adele",
+            "genre": "soul",
+            "playlist": "soft mornings"
+        },
+        "blinding lights": {
+            "autore": "the weeknd",
+            "genre": "synth pop",
+            "playlist": "pop hits 2020"
+        },
+        "save your tears": {
+            "autore": "the weeknd",
+            "genre": "synth pop",
+            "playlist": "chill pop"
+        },
+        "smells like teen spirit": {
+            "autore": "nirvana",
+            "genre": "grunge",
+            "playlist": "90s rock legends"
+        },
+        "come as you are": {
+            "autore": "nirvana",
+            "genre": "grunge",
+            "playlist": "90s rock legends"
+        },
+        "viva la vida": {
+            "autore": "coldplay",
+            "genre": "alternative",
+            "playlist": "chill & focus"
+        },
+        "yellow": {
+            "autore": "coldplay",
+            "genre": "alternative",
+            "playlist": "soft mornings"
+        },
+        "imagine": {
+            "autore": "john lennon",
+            "genre": "pop rock",
+            "playlist": "peaceful classics"
+        },
+        "let it be": {
+            "autore": "the beatles",
+            "genre": "pop rock",
+            "playlist": "peaceful classics"
+        },
+        "under pressure": {
+            "autore": "queen & david bowie",
+            "genre": "rock",
+            "playlist": "classic rock essentials",
+            "song": "under pressure"
+        },
+        "a te": {
+            "autore": "jovanotti",
+            "genre": "pop italiano",
+            "playlist": "canzoni d\u2019amore italiane"
+        },
+        "ti scatter\u00f2 una foto": {
+            "autore": "tiziano ferro",
+            "genre": "pop italiano",
+            "playlist": "canzoni d\u2019amore italiane"
+        },
+        "senza parole": {
+            "autore": "vasco rossi",
+            "genre": "rock italiano",
+            "playlist": "made in italy"
+        }
     }
 }

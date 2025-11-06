@@ -127,7 +127,7 @@ class App(tk.Tk):
         for widget in self.music_frame.winfo_children():
             widget.destroy()
 
-        brano = music_dict.get("brano", "—")
+        brano = music_dict.get("song", "—")
         autore = music_dict.get("autore")
         player = music_dict.get("player")
 

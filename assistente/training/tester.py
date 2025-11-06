@@ -1,8 +1,14 @@
 from pathlib import Path
 import joblib
 from sklearn.metrics import classification_report
-from dataset import DEFAULT_DATASET_DIR, LEGACY_DATASET_DIR, load_samples  
-from loss_visualizaer import plot_loss_from_json
+
+try:
+    from dataset import DEFAULT_DATASET_DIR, LEGACY_DATASET_DIR, load_samples  
+    from loss_visualizaer import plot_loss_from_json
+except:
+    from .dataset import DEFAULT_DATASET_DIR, LEGACY_DATASET_DIR, load_samples  
+    from .loss_visualizaer import plot_loss_from_json
+
 
 MODEL_PATH = Path("models/text_response_model.joblib")
 DATASET_DIR = Path(DEFAULT_DATASET_DIR)
